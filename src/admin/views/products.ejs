@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>FF STORE - Products</title>
+  <style>
+    body { font-family: Arial; background: #1a1a2e; color: white; padding: 20px; }
+    h1 { color: #e94560; }
+    form { margin: 20px 0; }
+    input { padding: 10px; margin: 5px; background: #0f3460; border: 1px solid #e94560; color: white; border-radius: 5px; }
+    button { padding: 10px 20px; background: #e94560; color: white; border: none; border-radius: 5px; cursor: pointer; }
+    .product { background: #16213e; padding: 20px; margin: 10px 0; border-radius: 10px; }
+    a { color: #e94560; }
+  </style>
+</head>
+<body>
+  <h1>📦 Products</h1>
+  <a href="/admin/dashboard">← Back</a>
+  
+  <form method="POST" action="/admin/products">
+    <input name="name" placeholder="Product name" required>
+    <input name="description" placeholder="Description">
+    <button>Add Product</button>
+  </form>
+
+  <% products.forEach(product => { %>
+    <div class="product">
+      <h2><%= product.name %> (<%= product.isActive ? 'Active' : 'Inactive' %>)</h2>
+      <p><%= product.description %></p>
+      
+      <h3>Plans:</h3>
+      <ul>
+        <% product.plans.forEach(plan => { %>
+          <li>
+            <%= plan.durationLabel %> - ₹<%= plan.price %> 
+            (<%= plan.isActive ? 'Active' : 'Inactive' %>)
+          </li>
+        <% }) %>
+      </ul>
+      
+      <h4>Add Plan:</h4>
+      <form method="POST" action="/admin/products/<%= product.id %>/plans">
+        <input name="durationLabel" placeholder="e.g., 1 Hour" required>
+        <input name="durationSeconds" placeholder="3600" type="number" required>
+        <input name="price" placeholder="50" type="number" required>
+        <button>Add Plan</button>
+      </form>
+    </div>
+  <% }) %>
+</body>
+</html>

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>FF STORE - Orders</title>
+  <style>
+    body { font-family: Arial; background: #1a1a2e; color: white; padding: 20px; }
+    h1 { color: #e94560; }
+    table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+    th, td { border: 1px solid #333; padding: 10px; text-align: left; }
+    th { background: #16213e; color: #e94560; }
+    a { color: #e94560; }
+  </style>
+</head>
+<body>
+  <h1>📋 Orders</h1>
+  <a href="/admin/dashboard">← Back</a>
+  
+  <table>
+    <tr>
+      <th>Order ID</th>
+      <th>User</th>
+      <th>Product</th>
+      <th>Plan</th>
+      <th>Amount</th>
+      <th>Status</th>
+      <th>Date</th>
+    </tr>
+    <% orders.forEach(order => { %>
+      <tr>
+        <td><%= order.id.slice(0,8) %></td>
+        <td>@<%= order.user.username || order.user.telegramId %></td>
+        <td><%= order.product.name %></td>
+        <td><%= order.plan.durationLabel %></td>
+        <td>₹<%= order.amount %></td>
+        <td><%= order.status %></td>
+        <td><%= order.createdAt.toISOString().slice(0,16) %></td>
+      </tr>
+    <% }) %>
+  </table>
+</body>
+</html>

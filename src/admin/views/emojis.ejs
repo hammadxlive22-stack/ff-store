@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>FF STORE - Emoji Manager</title>
+  <style>
+    body { font-family: Arial; background: #1a1a2e; color: white; padding: 20px; }
+    h1 { color: #e94560; }
+    table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+    th, td { border: 1px solid #333; padding: 10px; text-align: left; }
+    th { background: #16213e; color: #e94560; }
+    input, select { padding: 8px; margin: 5px; background: #0f3460; border: 1px solid #e94560; color: white; border-radius: 5px; }
+    button { padding: 8px 15px; background: #e94560; color: white; border: none; border-radius: 5px; cursor: pointer; }
+    a { color: #e94560; }
+  </style>
+</head>
+<body>
+  <h1>💎 Custom Emoji Manager</h1>
+  <a href="/admin/dashboard">← Back</a>
+  
+  <h2>Add New Emoji</h2>
+  <form method="POST" action="/admin/emojis">
+    <input name="emojiId" placeholder="Telegram Emoji ID" required>
+    <select name="categoryId">
+      <% categories.forEach(cat => { %>
+        <option value="<%= cat.id %>"><%= cat.label %></option>
+      <% }) %>
+    </select>
+    <input name="fallbackEmoji" placeholder="Fallback (👑)" required>
+    <input name="label" placeholder="Label">
+    <button>Add</button>
+  </form>
+
+  <% categories.forEach(cat => { %>
+    <h3><%= cat.label %></h3>
+    <table>
+      <tr>
+        <th>Emoji ID</th>
+        <th>Fallback</th>
+        <th>Label</th>
+        <th>Status</th>
+      </tr>
+      <% cat.customEmojis.forEach(emoji => { %>
+        <tr>
+          <td><code><%= emoji.emojiId %></code></td>
+          <td><%= emoji.fallbackEmoji %></td>
+          <td><%= emoji.label || '-' %></td>
+          <td><%= emoji.isActive ? '✅' : '❌' %></td>
+        </tr>
+      <% }) %>
+    </table>
+  <% }) %>
+</body>
+</html>
