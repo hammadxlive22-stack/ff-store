@@ -5,9 +5,8 @@ const famgateway = require('../../services/famgateway');
 const logger = require('../../utils/logger');
 
 module.exports = (bot) => {
-  // 💳 Payment create action
   bot.action(/^pay_(\d+)$/, async (ctx) => {
-    // ✅ तुरंत answer करो (कोई await नहीं)
+    // ✅ सबसे पहले callback answer करो (कोई await नहीं)
     ctx.answerCbQuery().catch(() => {});
 
     try {
@@ -55,7 +54,7 @@ module.exports = (bot) => {
         },
       });
 
-      // ✅ पहले text message तुरंत भेजो
+      // ✅ पहले text message भेजो (UPI link) – तुरंत दिखेगा
       const paymentText = `💳 <b>PAYMENT CREATED</b>\n✦━━━━━━━━━━━━━━━━✦\n\n📦 Product: ${plan.product.name}\n⏱️ Plan: ${plan.durationLabel}\n💰 Amount: ₹${plan.price}\n🧾 Order ID: <code>${order.id.slice(0,8)}</code>\n\n🔗 <b>UPI Link:</b>\n<code>${famResponse.qr_text}</code>`;
 
       const buttons = Markup.inlineKeyboard([
@@ -66,12 +65,13 @@ module.exports = (bot) => {
 
       await ctx.replyWithHTML(paymentText, buttons);
 
-      // ✅ अब QR photo अलग से भेजने की कोशिश करो
+      // ✅ QR कोड भेजने की कोशिश करो – तीन तरीके
       if (famResponse.qr_text) {
+        // Method 1: Local QR generate
         try {
           const qrBuffer = await QRCode.toBuffer(famResponse.qr_text, {
             type: 'png',
-            width: 250,  // छोटा size, तेज़ generate
+            width: 250,
             margin: 1,
             errorCorrectionLevel: 'M',
           });
@@ -79,10 +79,26 @@ module.exports = (bot) => {
             { source: qrBuffer },
             { caption: '👇 Scan this QR to pay' }
           );
-        } catch (qrError) {
-          logger.error('QR send failed:', qrError.message);
-          // कोई ज़रूरी नहीं, text पहले ही भेज दिया
+          return; // success, बाहर
+        } catch (localQrError) {
+          logger.error('QR local generation failed:', localQrError.message);
         }
+
+        // Method 2: FamGateway के qr_url से सीधे भेजो
+        if (famResponse.qr_image) {
+          try {
+            await ctx.replyWithPhoto(
+              { url: famResponse.qr_image },
+              { caption: '👇 Scan this QR to pay' }
+            );
+            return; // success
+          } catch (remoteQrError) {
+            logger.error('QR URL send failed:', remoteQrError.message);
+          }
+        }
+
+        // Method 3: QR नहीं भेज पाए – UPI link पहले से भेज दिया, ignore
+        logger.warn('QR could not be sent, UPI link already provided');
       }
     } catch (error) {
       logger.error('Payment creation error:', error);
