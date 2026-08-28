@@ -1,7 +1,11 @@
 const axios = require('axios');
 const logger = require('../utils/logger');
 
-const FAM_BASE_URL = process.env.FAMGATEWAY_BASE_URL || 'https://api.famgateway.com/v1';
+// Base URL and endpoint configuration
+const FAM_BASE_URL = process.env.FAMGATEWAY_BASE_URL || 'https://api.famgateway.in';
+const FAM_CREATE_ENDPOINT = process.env.FAMGATEWAY_CREATE_ENDPOINT || '/order/create'; // adjust as per docs
+const FAM_STATUS_ENDPOINT = process.env.FAMGATEWAY_STATUS_ENDPOINT || '/order/status'; // adjust
+
 const FAM_API_KEY = process.env.FAMGATEWAY_API_KEY;
 const FAM_MERCHANT_ID = process.env.FAMGATEWAY_MERCHANT_ID;
 
@@ -9,57 +13,48 @@ async function createPayment({ amount, orderId, customerName }) {
   try {
     logger.info(`Creating FamGateway payment for order: ${orderId}`);
 
-    // Prepare request payload (adjust as per actual FamGateway docs)
     const payload = {
       merchant_id: FAM_MERCHANT_ID,
-      order_id: orderId,           // internal order ID (UUID)
+      order_id: orderId,
       amount: amount,
       customer_name: customerName,
       currency: 'INR',
-      // Add other fields like redirect_url, webhook_url if needed
+      // webhook_url: `${process.env.WEBHOOK_URL}/payment/webhook`, // optional
+      // redirect_url: 'https://your-callback-url.com',
     };
 
-    // Make API call
+    // Log request details (remove in production)
+    logger.info('Request URL:', `${FAM_BASE_URL}${FAM_CREATE_ENDPOINT}`);
+    logger.info('Request payload:', payload);
+
     const response = await axios.post(
-      `${FAM_BASE_URL}/order/create`,   // adjust endpoint if different
+      `${FAM_BASE_URL}${FAM_CREATE_ENDPOINT}`,
       payload,
       {
         headers: {
-          // Common auth methods:
-          // 1. Bearer token
           'Authorization': `Bearer ${FAM_API_KEY}`,
-          // 2. API key in custom header (e.g., 'x-api-key')
-          // 'x-api-key': FAM_API_KEY,
-          // 3. Query parameter (some gateways use ?api_key=)
           'Content-Type': 'application/json',
+          // Some APIs use x-api-key or other headers; adjust accordingly
         },
       }
     );
 
-    // Log full response for debugging
-    logger.info('FamGateway create response:', JSON.stringify(response.data));
+    logger.info('FamGateway create response:', response.data);
 
-    // Map response fields (adjust according to actual API)
     return {
       success: true,
-      fam_order_id: response.data.fam_order_id || response.data.gateway_order_id || response.data.order_id, // gateway's own ID
-      internal_order_id: orderId, // preserve internal ID
-      qr_text: response.data.qr_text || response.data.upi_link || response.data.payment_link,
-      qr_image: response.data.qr_image || response.data.qr_code || null,
+      fam_order_id: response.data.fam_order_id || response.data.gateway_order_id || response.data.order_id,
+      qr_text: response.data.qr_text || response.data.upi_link || response.data.payment_link || response.data.qr_code,
+      qr_image: response.data.qr_image || response.data.qr_code_image || null,
       payment_url: response.data.payment_url || response.data.redirect_url || null,
     };
   } catch (error) {
-    // Log detailed error information
     logger.error('FamGateway create payment error:', {
       status: error.response?.status,
-      statusText: error.response?.statusText,
       data: error.response?.data,
       message: error.message,
     });
-    return { 
-      success: false, 
-      error: error.response?.data?.message || error.response?.data?.error || 'Payment creation failed' 
-    };
+    return { success: false, error: error.response?.data?.message || error.response?.data?.error || 'Payment creation failed' };
   }
 }
 
@@ -67,30 +62,24 @@ async function verifyPayment(famOrderId) {
   try {
     logger.info(`Verifying FamGateway payment: ${famOrderId}`);
 
-    // Make status check API call (adjust endpoint)
-    const response = await axios.get(
-      `${FAM_BASE_URL}/order/status/${famOrderId}`,
-      {
-        headers: {
-          'Authorization': `Bearer ${FAM_API_KEY}`,
-        },
-      }
-    );
+    const url = `${FAM_BASE_URL}${FAM_STATUS_ENDPOINT}${famOrderId}`;
+    logger.info('Verify URL:', url);
 
-    logger.info('FamGateway verify response:', JSON.stringify(response.data));
+    const response = await axios.get(url, {
+      headers: {
+        'Authorization': `Bearer ${FAM_API_KEY}`,
+      },
+    });
 
-    // Map status (adjust according to actual API)
+    logger.info('FamGateway verify response:', response.data);
+
     const status = (response.data.status || response.data.payment_status || '').toUpperCase();
     let result;
-    if (['SUCCESS', 'COMPLETED', 'PAID'].includes(status)) {
-      result = 'SUCCESS';
-    } else if (['FAILED', 'CANCELLED', 'REJECTED'].includes(status)) {
-      result = 'FAILED';
-    } else if (['EXPIRED'].includes(status)) {
-      result = 'EXPIRED';
-    } else {
-      result = 'PENDING';
-    }
+    if (['SUCCESS', 'COMPLETED', 'PAID'].includes(status)) result = 'SUCCESS';
+    else if (['FAILED', 'CANCELLED', 'REJECTED'].includes(status)) result = 'FAILED';
+    else if (['EXPIRED'].includes(status)) result = 'EXPIRED';
+    else result = 'PENDING';
+
     return { status: result };
   } catch (error) {
     logger.error('FamGateway verify error:', {
