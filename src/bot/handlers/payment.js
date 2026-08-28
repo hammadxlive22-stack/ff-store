@@ -64,37 +64,28 @@ module.exports = (bot) => {
 
       // ✅ QR image सीधे URL से भेजें
       if (famResponse.qr_image) {
-        try {
-          await ctx.replyWithPhoto(
-            { url: famResponse.qr_image },   // Telegram खुद fetch करेगा
-            {
-              caption: paymentText,
-              parse_mode: 'HTML',
-              ...buttons,
-            }
-          );
-        } catch (photoError) {
-          logger.error('QR photo send failed, using text fallback:', photoError.message);
-          // Fallback: UPI link text के साथ
-          await ctx.replyWithHTML(
-            paymentText + `\n\n🔗 <b>UPI Link:</b>\n<code>${famResponse.qr_text}</code>`,
-            buttons
-          );
-        }
-      } else {
-        await ctx.replyWithHTML(
-          paymentText + `\n\n🔗 <b>UPI Link:</b>\n<code>${famResponse.qr_text}</code>`,
-          buttons
-        );
+  try {
+    await ctx.replyWithPhoto(
+      { url: famResponse.qr_image },   // ✅ Telegram खुद image fetch करेगा
+      {
+        caption: paymentText,
+        parse_mode: 'HTML',
+        ...buttons,
       }
-    } catch (error) {
-      logger.error('Payment creation error:', error);
-      // अगर callback answer नहीं हुआ तो कोशिश करें
-      ctx.answerCbQuery().catch(() => {});
-      ctx.reply('❌ An error occurred. Please try again.').catch(() => {});
-    }
-  });
-
+    );
+  } catch (photoError) {
+    logger.error('QR photo send failed, fallback to UPI link:', photoError.message);
+    await ctx.replyWithHTML(
+      paymentText + `\n\n🔗 <b>UPI Link:</b>\n<code>${famResponse.qr_text}</code>`,
+      buttons
+    );
+  }
+} else {
+  await ctx.replyWithHTML(
+    paymentText + `\n\n🔗 <b>UPI Link:</b>\n<code>${famResponse.qr_text}</code>`,
+    buttons
+  );
+}
   // ✅ I Have Paid – verification (with mock support)
   bot.action(/^paid_(.+)$/, async (ctx) => {
     // तुरंत answer करें
