@@ -1,4 +1,5 @@
 const { Markup } = require('telegraf');
+const axios = require('axios');
 const prisma = require('../../services/db');
 const famgateway = require('../../services/famgateway');
 const logger = require('../../utils/logger');
@@ -62,11 +63,17 @@ module.exports = (bot) => {
         [Markup.button.callback('❌ Cancel Order', `cancel_${order.id}`)],
       ]);
 
-      // ✅ QR image सीधे URL से भेजें
+      // ✅ QR image को download करके buffer भेजें
       if (famResponse.qr_image) {
         try {
+          const imageResponse = await axios.get(famResponse.qr_image, {
+            responseType: 'arraybuffer',
+            timeout: 20000, // 20 sec
+          });
+          const imageBuffer = Buffer.from(imageResponse.data, 'binary');
+
           await ctx.replyWithPhoto(
-            { url: famResponse.qr_image },
+            { source: imageBuffer },
             {
               caption: paymentText,
               parse_mode: 'HTML',
@@ -74,7 +81,7 @@ module.exports = (bot) => {
             }
           );
         } catch (photoError) {
-          logger.error('QR photo send failed, fallback to UPI link:', photoError.message);
+          logger.error('QR image send failed, fallback to UPI link:', photoError.message);
           await ctx.replyWithHTML(
             paymentText + `\n\n🔗 <b>UPI Link:</b>\n<code>${famResponse.qr_text}</code>`,
             buttons
