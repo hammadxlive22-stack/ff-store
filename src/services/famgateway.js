@@ -14,47 +14,41 @@ async function createPayment({ amount, orderId, customerName }) {
       logger.error(`Invalid amount: ${amount}`);
       return { success: false, error: 'Invalid amount' };
     }
+    const amountString = numericAmount.toFixed(2); // "1.00", "50.00"
 
-    // Amount in rupees (decimal) as string with two decimals
-    const amountString = numericAmount.toFixed(2); // e.g., "50.00"
-
-    // Build query parameters (GET request)
     const params = {
       api_key: FAM_API_KEY,
       merchant_id: FAM_MERCHANT_ID,
-      order_id: orderId,
-      amount: amountString,          // "50.00"
+      order_id: orderId,           // internal UUID
+      amount: amountString,
       customer_name: customerName,
-      // currency: 'INR',  // if needed, add here
+      // currency: 'INR', // add if required
     };
 
     const url = `${FAM_BASE_URL}${FAM_CREATE_ENDPOINT}`;
     logger.info(`FamGateway Request URL: ${url}`);
-    logger.info(`FamGateway Query Params:`, params);
+    logger.info(`FamGateway Params:`, params);
 
-    // ✅ Use GET request with query parameters
+    // ✅ GET request (as per API)
     const response = await axios.get(url, { params });
 
     logger.info('FamGateway create response:', response.data);
 
-    // Response might be JSON or plain text; adjust parsing
-    let data = response.data;
-    if (typeof data === 'string') {
-      try { data = JSON.parse(data); } catch (e) { /* keep as string */ }
-    }
+    // ✅ Parse nested response: response.data.data.order_id
+    const apiData = response.data?.data || response.data; // fallback if no nesting
+    const gatewayOrderId = apiData.order_id || apiData.fam_order_id || apiData.gateway_order_id;
 
-    const famOrderId = data.fam_order_id || data.gateway_order_id || data.order_id || data.qr_id;
-    if (!famOrderId) {
-      logger.error('FamGateway response missing gateway order ID:', data);
+    if (!gatewayOrderId) {
+      logger.error('FamGateway response missing gateway order ID:', response.data);
       return { success: false, error: 'Invalid gateway response' };
     }
 
     return {
       success: true,
-      fam_order_id: famOrderId,
-      qr_text: data.qr_text || data.upi_link || data.payment_link || data.qr_code || data.qr,
-      qr_image: data.qr_image || data.qr_code_image || null,
-      payment_url: data.payment_url || data.redirect_url || null,
+      fam_order_id: gatewayOrderId,          // ✅ store this in DB
+      qr_text: apiData.upi_intent || apiData.qr_text || apiData.upi_link || apiData.payment_link,
+      qr_image: apiData.qr_url || apiData.qr_image || apiData.qr_code_image || null,
+      payment_url: apiData.checkout_url || apiData.payment_url || apiData.redirect_url || null,
     };
   } catch (error) {
     logger.error('FamGateway create payment error:', {
@@ -62,9 +56,9 @@ async function createPayment({ amount, orderId, customerName }) {
       data: error.response?.data,
       message: error.message,
     });
-    return { 
-      success: false, 
-      error: error.response?.data?.message || error.response?.data?.error || 'Payment creation failed' 
+    return {
+      success: false,
+      error: error.response?.data?.message || error.response?.data?.error || 'Payment creation failed'
     };
   }
 }
@@ -74,7 +68,7 @@ async function verifyPayment(famOrderId) {
     const url = `${FAM_BASE_URL}${FAM_STATUS_ENDPOINT}`;
     const params = {
       api_key: FAM_API_KEY,
-      order_id: famOrderId, // or gateway order id
+      order_id: famOrderId, // gateway order ID (e.g., fg_LLW8FR7M)
     };
 
     logger.info(`FamGateway Verify URL: ${url}`);
@@ -84,12 +78,8 @@ async function verifyPayment(famOrderId) {
 
     logger.info('FamGateway verify response:', response.data);
 
-    let data = response.data;
-    if (typeof data === 'string') {
-      try { data = JSON.parse(data); } catch (e) { /* ignore */ }
-    }
-
-    const rawStatus = data.status || data.payment_status || '';
+    const apiData = response.data?.data || response.data;
+    const rawStatus = apiData.status || apiData.payment_status || '';
     const statusUpper = String(rawStatus).toUpperCase();
     let status;
     if (['SUCCESS', 'COMPLETED', 'PAID'].includes(statusUpper)) status = 'SUCCESS';
