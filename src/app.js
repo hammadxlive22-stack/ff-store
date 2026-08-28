@@ -54,7 +54,7 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-// ✅ /admin redirect
+// /admin redirect
 app.get('/admin', (req, res) => {
   if (req.session.adminId) {
     res.redirect('/admin/dashboard');
@@ -70,47 +70,35 @@ app.use('/admin', require('./admin/routes/products'));
 app.use('/admin', require('./admin/routes/orders'));
 app.use('/admin', require('./admin/routes/emojis'));
 
-// ✅ FamGateway Payment Webhook (corrected)
+// ✅ FamGateway Payment Webhook (corrected to use gateway order ID)
 app.post('/payment/webhook', async (req, res) => {
   try {
     const payload = req.body;
     logger.info('FamGateway webhook received:', payload);
 
-    // Actual webhook payload (from logs):
-    // {
-    //   "amount": "100.00",
-    //   "event": "payment.success",
-    //   "is_test": true,
-    //   "order_id": "TEST-6A913A05206A3",  <-- internal order ID
-    //   "payable_amount": "100.00",
-    //   "payment_time": "28-08-2026 13:04:29",
-    //   "sender_name": "FamGateway Tester",
-    //   "status": "success",   <-- lowercase
-    //   "timestamp": 1787902469,
-    //   "transaction_id": "TEST_TXN_6A913A05206A6",
-    //   "utr": "652390534866"
-    // }
+    // Webhook payload contains:
+    // order_id = gateway's own order ID (fam_order_id)
+    // status = "success" / "pending" / "failed"
+    const gatewayOrderId = payload.order_id;
+    const status = payload.status?.toLowerCase();
 
-    const internalOrderId = payload.order_id; // internal order ID (UUID)
-    const status = payload.status?.toLowerCase(); // "success", "pending", "failed"
-
-    if (!internalOrderId || !status) {
+    if (!gatewayOrderId || !status) {
       logger.error('Invalid webhook payload: missing order_id or status');
       return res.status(400).send('Bad Request');
     }
 
-    // Find order by internal order ID
-    const order = await prisma.order.findUnique({
-      where: { id: internalOrderId },
-      include: { payment: true, user: true, product: true, plan: true },
+    // Lookup payment using gateway order ID
+    const payment = await prisma.payment.findUnique({
+      where: { famgatewayOrderId: gatewayOrderId },
+      include: { order: true },
     });
 
-    if (!order) {
-      logger.error(`Order not found for webhook order_id: ${internalOrderId}`);
-      return res.status(404).send('Order Not Found');
+    if (!payment) {
+      logger.error(`Payment not found for gateway order_id: ${gatewayOrderId}`);
+      return res.status(404).send('Not Found');
     }
 
-    // Map status to internal status
+    // Map status to internal statuses
     let paymentStatus, orderStatus;
     switch (status) {
       case 'success':
@@ -125,7 +113,7 @@ app.post('/payment/webhook', async (req, res) => {
         break;
       case 'failed':
         paymentStatus = 'FAILED';
-        orderStatus = 'EXPIRED'; // or FAILED
+        orderStatus = 'EXPIRED';
         break;
       case 'expired':
         paymentStatus = 'EXPIRED';
@@ -136,41 +124,48 @@ app.post('/payment/webhook', async (req, res) => {
         orderStatus = 'PENDING';
     }
 
-    // Update only if status changed (idempotent)
-    if (order.paymentStatus !== paymentStatus || order.status !== orderStatus) {
+    // Idempotent update
+    if (payment.status !== paymentStatus || payment.order.status !== orderStatus) {
       await prisma.$transaction(async (tx) => {
         await tx.payment.update({
-          where: { orderId: order.id },
+          where: { id: payment.id },
           data: { status: paymentStatus, verifiedAt: paymentStatus === 'SUCCESS' ? new Date() : null },
         });
         await tx.order.update({
-          where: { id: order.id },
+          where: { id: payment.orderId },
           data: { paymentStatus, status: orderStatus },
         });
       });
 
-      // If payment successful, notify admins
+      // Notify admins on success
       if (paymentStatus === 'SUCCESS') {
-        const admins = await prisma.admin.findMany({
-          where: { isSuperadmin: true, isActive: true, telegramId: { not: null } },
+        const order = await prisma.order.findUnique({
+          where: { id: payment.orderId },
+          include: { user: true, product: true, plan: true },
         });
 
-        for (const admin of admins) {
-          const adminMsg = `🔔 NEW PAID ORDER (Webhook)\n\n👤 User: ${order.user.firstName}\n📦 Product: ${order.product.name}\n⏱️ Plan: ${order.plan.durationLabel}\n💰 Amount: ₹${order.amount}\n🧾 Order ID: <code>${order.id.slice(0,8)}</code>\n\nApprove or reject:`;
-          const adminButtons = {
-            reply_markup: {
-              inline_keyboard: [
-                [
-                  { text: '✅ Approve', callback_data: `approve_${order.id}` },
-                  { text: '❌ Reject', callback_data: `reject_${order.id}` },
+        if (order && order.status === 'PAYMENT_VERIFIED') {
+          const admins = await prisma.admin.findMany({
+            where: { isSuperadmin: true, isActive: true, telegramId: { not: null } },
+          });
+
+          for (const admin of admins) {
+            const adminMsg = `🔔 NEW PAID ORDER (Webhook)\n\n👤 User: ${order.user.firstName}\n📦 Product: ${order.product.name}\n⏱️ Plan: ${order.plan.durationLabel}\n💰 Amount: ₹${order.amount}\n🧾 Order ID: <code>${order.id.slice(0,8)}</code>\n\nApprove or reject:`;
+            const adminButtons = {
+              reply_markup: {
+                inline_keyboard: [
+                  [
+                    { text: '✅ Approve', callback_data: `approve_${order.id}` },
+                    { text: '❌ Reject', callback_data: `reject_${order.id}` },
+                  ],
                 ],
-              ],
-            },
-          };
-          await bot.telegram.sendMessage(admin.telegramId.toString(), adminMsg, {
-            parse_mode: 'HTML',
-            ...adminButtons,
-          }).catch((err) => logger.error('Webhook admin notify error:', err));
+              },
+            };
+            await bot.telegram.sendMessage(admin.telegramId.toString(), adminMsg, {
+              parse_mode: 'HTML',
+              ...adminButtons,
+            }).catch((err) => logger.error('Webhook admin notify error:', err));
+          }
         }
       }
     }
