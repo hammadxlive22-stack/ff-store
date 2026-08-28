@@ -93,7 +93,7 @@ module.exports = (bot) => {
     }
   });
 
-  // ✅ I Have Paid – verification (with mock support)
+  // ✅ I Have Paid – verification (Real only)
   bot.action(/^paid_(.+)$/, async (ctx) => {
     ctx.answerCbQuery('⏳ Verifying...').catch(() => {});
 
@@ -116,13 +116,8 @@ module.exports = (bot) => {
         return ctx.answerCbQuery('❌ Order is no longer active.').catch(() => {});
       }
 
-      let verification;
-      if (process.env.MOCK_PAYMENT === 'true') {
-        logger.warn('MOCK_PAYMENT mode enabled - returning SUCCESS');
-        verification = { status: 'SUCCESS' };
-      } else {
-        verification = await famgateway.verifyPayment(order.payment.famgatewayOrderId);
-      }
+      // Real verification via FamGateway
+      const verification = await famgateway.verifyPayment(order.payment.famgatewayOrderId);
 
       if (verification.status === 'SUCCESS') {
         await prisma.$transaction(async (tx) => {
