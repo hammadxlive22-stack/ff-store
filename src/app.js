@@ -76,18 +76,30 @@ app.post('/payment/webhook', async (req, res) => {
     const payload = req.body;
     logger.info('FamGateway webhook received:', payload);
 
-    // Webhook payload contains:
-    // order_id = gateway's own order ID (fam_order_id)
-    // status = "success" / "pending" / "failed"
-    const gatewayOrderId = payload.order_id;
-    const status = payload.status?.toLowerCase();
+    // FamGateway webhook payload (example):
+    // {
+    //   amount: "100.00",
+    //   event: "payment.success",
+    //   is_test: true,
+    //   order_id: "TEST-6A913E896FFBC",   <-- gateway's order ID
+    //   payable_amount: "100.00",
+    //   payment_time: "28-08-2026 13:23:45",
+    //   sender_name: "FamGateway Tester",
+    //   status: "success",
+    //   timestamp: 1787903625,
+    //   transaction_id: "TEST_TXN_6A913E896FFBF",
+    //   utr: "856665956665"
+    // }
+
+    const gatewayOrderId = payload.order_id || payload.gateway_order_id || payload.fam_order_id;
+    const status = (payload.status || '').toLowerCase();
 
     if (!gatewayOrderId || !status) {
       logger.error('Invalid webhook payload: missing order_id or status');
-      return res.status(400).send('Bad Request');
+      return res.status(200).send('OK'); // avoid retries
     }
 
-    // Lookup payment using gateway order ID
+    // Find payment using gateway order ID
     const payment = await prisma.payment.findUnique({
       where: { famgatewayOrderId: gatewayOrderId },
       include: { order: true },
@@ -95,10 +107,10 @@ app.post('/payment/webhook', async (req, res) => {
 
     if (!payment) {
       logger.error(`Payment not found for gateway order_id: ${gatewayOrderId}`);
-      return res.status(404).send('Not Found');
+      return res.status(200).send('OK'); // prevent retries
     }
 
-    // Map status to internal statuses
+    // Map status
     let paymentStatus, orderStatus;
     switch (status) {
       case 'success':
@@ -137,7 +149,7 @@ app.post('/payment/webhook', async (req, res) => {
         });
       });
 
-      // Notify admins on success
+      // Notify admins if success
       if (paymentStatus === 'SUCCESS') {
         const order = await prisma.order.findUnique({
           where: { id: payment.orderId },
@@ -173,7 +185,7 @@ app.post('/payment/webhook', async (req, res) => {
     return res.status(200).send('OK');
   } catch (error) {
     logger.error('Webhook processing error:', error);
-    return res.status(500).send('Internal Server Error');
+    return res.status(200).send('OK'); // still return 200 to avoid retries
   }
 });
 
