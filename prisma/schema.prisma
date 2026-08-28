@@ -1,0 +1,125 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id         Int      @id @default(autoincrement())
+  telegramId BigInt   @unique @map("telegram_id")
+  username   String?
+  firstName  String?  @map("first_name")
+  lastName   String?  @map("last_name")
+  createdAt  DateTime @default(now()) @map("created_at")
+  orders     Order[]
+}
+
+model Product {
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  plans       Plan[]
+  orders      Order[]
+}
+
+model Plan {
+  id              Int      @id @default(autoincrement())
+  productId       Int      @map("product_id")
+  product         Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  durationLabel   String   @map("duration_label")
+  durationSeconds Int      @map("duration_seconds")
+  price           Decimal  @db.Decimal(10, 2)
+  isActive        Boolean  @default(true) @map("is_active")
+  sortOrder       Int      @default(0) @map("sort_order")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  orders          Order[]
+}
+
+model Order {
+  id             String   @id @default(uuid())
+  userId         Int      @map("user_id")
+  user           User     @relation(fields: [userId], references: [id])
+  productId      Int      @map("product_id")
+  product        Product  @relation(fields: [productId], references: [id])
+  planId         Int      @map("plan_id")
+  plan           Plan     @relation(fields: [planId], references: [id])
+  amount         Decimal  @db.Decimal(10, 2)
+  status         String   @default("PENDING")
+  paymentStatus  String   @default("PENDING") @map("payment_status")
+  approvalStatus String   @default("PENDING") @map("approval_status")
+  deliveryStatus String   @default("PENDING") @map("delivery_status")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  payment        Payment?
+  delivery       Delivery?
+}
+
+model Payment {
+  id                Int       @id @default(autoincrement())
+  orderId           String    @unique @map("order_id")
+  order             Order     @relation(fields: [orderId], references: [id])
+  famgatewayOrderId String?   @unique @map("famgateway_order_id")
+  amount            Decimal   @db.Decimal(10, 2)
+  status            String    @default("PENDING")
+  paymentData       Json?     @map("payment_data")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  verifiedAt        DateTime? @map("verified_at")
+}
+
+model Delivery {
+  id          Int      @id @default(autoincrement())
+  orderId     String   @unique @map("order_id")
+  order       Order    @relation(fields: [orderId], references: [id])
+  keyContent  String   @map("key_content")
+  deliveredAt DateTime @default(now()) @map("delivered_at")
+}
+
+model Admin {
+  id           Int      @id @default(autoincrement())
+  telegramId   BigInt?  @unique @map("telegram_id")
+  username     String?  @unique
+  passwordHash String   @map("password_hash")
+  fullName     String?  @map("full_name")
+  isSuperadmin Boolean  @default(false) @map("is_superadmin")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  auditLogs    AuditLog[]
+}
+
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  adminId   Int      @map("admin_id")
+  admin     Admin    @relation(fields: [adminId], references: [id])
+  action    String
+  details   Json?
+  createdAt DateTime @default(now()) @map("created_at")
+}
+
+model CustomEmoji {
+  id            Int           @id @default(autoincrement())
+  emojiId       String        @unique @map("emoji_id")
+  categoryId    Int           @map("category_id")
+  category      EmojiCategory @relation(fields: [categoryId], references: [id])
+  fallbackEmoji String        @map("fallback_emoji")
+  label         String?
+  isActive      Boolean       @default(true) @map("is_active")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+}
+
+model EmojiCategory {
+  id           Int           @id @default(autoincrement())
+  key          String        @unique
+  label        String
+  isActive     Boolean       @default(true) @map("is_active")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  customEmojis CustomEmoji[]
+}
