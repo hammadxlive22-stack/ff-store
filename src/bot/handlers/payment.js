@@ -17,9 +17,10 @@ module.exports = (bot) => {
 
       if (!plan) return ctx.reply('❌ Invalid plan.');
 
+      // ✅ Fix: userId ko BigInt mein convert karo
       const order = await prisma.order.create({
         data: {
-          userId: ctx.from.id,
+          userId: BigInt(ctx.from.id),
           productId: plan.productId,
           planId: plan.id,
           amount: plan.price,
@@ -135,7 +136,8 @@ module.exports = (bot) => {
       const orderId = ctx.match[1];
       const order = await prisma.order.findUnique({ where: { id: orderId } });
 
-      if (!order || order.userId !== ctx.from.id) return ctx.answerCbQuery('❌ Not found.');
+      // ✅ Fix: comparison mein BigInt conversion
+      if (!order || order.userId !== BigInt(ctx.from.id)) return ctx.answerCbQuery('❌ Not found.');
       if (order.paymentStatus === 'SUCCESS') return ctx.answerCbQuery('❌ Cannot cancel.');
 
       await prisma.order.update({ 
