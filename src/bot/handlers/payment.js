@@ -6,7 +6,7 @@ const logger = require('../../utils/logger');
 module.exports = (bot) => {
   // 💳 Payment create action
   bot.action(/^pay_(\d+)$/, async (ctx) => {
-    // ✅ Callback query को तुरंत answer करें (await न करें)
+    // Callback query को तुरंत answer करें (timeout से बचने के लिए)
     ctx.answerCbQuery().catch(() => {});
 
     try {
@@ -64,31 +64,37 @@ module.exports = (bot) => {
 
       // ✅ QR image सीधे URL से भेजें
       if (famResponse.qr_image) {
-  try {
-    await ctx.replyWithPhoto(
-      { url: famResponse.qr_image },   // ✅ Telegram खुद image fetch करेगा
-      {
-        caption: paymentText,
-        parse_mode: 'HTML',
-        ...buttons,
+        try {
+          await ctx.replyWithPhoto(
+            { url: famResponse.qr_image },
+            {
+              caption: paymentText,
+              parse_mode: 'HTML',
+              ...buttons,
+            }
+          );
+        } catch (photoError) {
+          logger.error('QR photo send failed, fallback to UPI link:', photoError.message);
+          await ctx.replyWithHTML(
+            paymentText + `\n\n🔗 <b>UPI Link:</b>\n<code>${famResponse.qr_text}</code>`,
+            buttons
+          );
+        }
+      } else {
+        await ctx.replyWithHTML(
+          paymentText + `\n\n🔗 <b>UPI Link:</b>\n<code>${famResponse.qr_text}</code>`,
+          buttons
+        );
       }
-    );
-  } catch (photoError) {
-    logger.error('QR photo send failed, fallback to UPI link:', photoError.message);
-    await ctx.replyWithHTML(
-      paymentText + `\n\n🔗 <b>UPI Link:</b>\n<code>${famResponse.qr_text}</code>`,
-      buttons
-    );
-  }
-} else {
-  await ctx.replyWithHTML(
-    paymentText + `\n\n🔗 <b>UPI Link:</b>\n<code>${famResponse.qr_text}</code>`,
-    buttons
-  );
-}
+    } catch (error) {
+      logger.error('Payment creation error:', error);
+      ctx.answerCbQuery().catch(() => {});
+      ctx.reply('❌ An error occurred. Please try again.').catch(() => {});
+    }
+  });
+
   // ✅ I Have Paid – verification (with mock support)
   bot.action(/^paid_(.+)$/, async (ctx) => {
-    // तुरंत answer करें
     ctx.answerCbQuery('⏳ Verifying...').catch(() => {});
 
     try {
