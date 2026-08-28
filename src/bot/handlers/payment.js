@@ -7,7 +7,7 @@ const logger = require('../../utils/logger');
 module.exports = (bot) => {
   // 💳 Payment create action
   bot.action(/^pay_(\d+)$/, async (ctx) => {
-    // Callback query को तुरंत answer करें (timeout से बचने के लिए)
+    // ✅ तुरंत answer करो (कोई await नहीं)
     ctx.answerCbQuery().catch(() => {});
 
     try {
@@ -39,7 +39,7 @@ module.exports = (bot) => {
           where: { id: order.id },
           data: { status: 'FAILED', paymentStatus: 'FAILED' },
         });
-        return ctx.reply('❌ Payment creation failed. Please try again.');
+        return ctx.reply('❌ Payment creation failed.');
       }
 
       await prisma.payment.create({
@@ -55,43 +55,34 @@ module.exports = (bot) => {
         },
       });
 
-      const paymentText = `💳 <b>PAYMENT CREATED</b>\n✦━━━━━━━━━━━━━━━━✦\n\n📦 Product: ${plan.product.name}\n⏱️ Plan: ${plan.durationLabel}\n💰 Amount: ₹${plan.price}\n🧾 Order ID: <code>${order.id.slice(0,8)}</code>\n\n👇 <b>Scan QR to pay</b>`;
+      // ✅ पहले text message तुरंत भेजो
+      const paymentText = `💳 <b>PAYMENT CREATED</b>\n✦━━━━━━━━━━━━━━━━✦\n\n📦 Product: ${plan.product.name}\n⏱️ Plan: ${plan.durationLabel}\n💰 Amount: ₹${plan.price}\n🧾 Order ID: <code>${order.id.slice(0,8)}</code>\n\n🔗 <b>UPI Link:</b>\n<code>${famResponse.qr_text}</code>`;
 
       const buttons = Markup.inlineKeyboard([
-  [Markup.button.url('🔗 Pay via Link', famResponse.payment_url || 'https://famgateway.in')],
-  [Markup.button.callback('✅ I Have Paid', `paid_${order.id}`)],
-  [Markup.button.callback('❌ Cancel Order', `cancel_${order.id}`)],
-]);
+        [Markup.button.url('🔗 Pay via Link', famResponse.payment_url || 'https://famgateway.in')],
+        [Markup.button.callback('✅ I Have Paid', `paid_${order.id}`)],
+        [Markup.button.callback('❌ Cancel Order', `cancel_${order.id}`)],
+      ]);
 
-      // ✅ QR code locally generate करें
+      await ctx.replyWithHTML(paymentText, buttons);
+
+      // ✅ अब QR photo अलग से भेजने की कोशिश करो
       if (famResponse.qr_text) {
         try {
           const qrBuffer = await QRCode.toBuffer(famResponse.qr_text, {
             type: 'png',
-            width: 300,
-            margin: 2,
+            width: 250,  // छोटा size, तेज़ generate
+            margin: 1,
             errorCorrectionLevel: 'M',
           });
           await ctx.replyWithPhoto(
             { source: qrBuffer },
-            {
-              caption: paymentText,
-              parse_mode: 'HTML',
-              ...buttons,
-            }
+            { caption: '👇 Scan this QR to pay' }
           );
         } catch (qrError) {
-          logger.error('QR generation failed, fallback to text:', qrError.message);
-          await ctx.replyWithHTML(
-            paymentText + `\n\n🔗 <b>UPI Link:</b>\n<code>${famResponse.qr_text}</code>`,
-            buttons
-          );
+          logger.error('QR send failed:', qrError.message);
+          // कोई ज़रूरी नहीं, text पहले ही भेज दिया
         }
-      } else {
-        await ctx.replyWithHTML(
-          paymentText + `\n\n🔗 <b>UPI Link:</b>\n<code>${famResponse.qr_text}</code>`,
-          buttons
-        );
       }
     } catch (error) {
       logger.error('Payment creation error:', error);
@@ -101,7 +92,7 @@ module.exports = (bot) => {
 
   // ✅ I Have Paid – verification
   bot.action(/^paid_(.+)$/, async (ctx) => {
-    ctx.answerCbQuery('⏳ Checking payment...').catch(() => {});
+    ctx.answerCbQuery('⏳ Checking...').catch(() => {});
 
     try {
       const orderId = ctx.match[1];
@@ -122,7 +113,6 @@ module.exports = (bot) => {
         return ctx.answerCbQuery('❌ Order is no longer active.').catch(() => {});
       }
 
-      // Real verification via FamGateway
       const verification = await famgateway.verifyPayment(order.payment.famgatewayOrderId);
 
       if (verification.status === 'SUCCESS') {
