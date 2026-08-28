@@ -1,13 +1,11 @@
 const { Markup } = require('telegraf');
-const axios = require('axios');
+const QRCode = require('qrcode');
 const prisma = require('../../services/db');
 const famgateway = require('../../services/famgateway');
 const logger = require('../../utils/logger');
 
 module.exports = (bot) => {
-  // 💳 Payment create action
   bot.action(/^pay_(\d+)$/, async (ctx) => {
-    // Callback query को तुरंत answer करें (timeout से बचने के लिए)
     ctx.answerCbQuery().catch(() => {});
 
     try {
@@ -39,7 +37,7 @@ module.exports = (bot) => {
           where: { id: order.id },
           data: { status: 'FAILED', paymentStatus: 'FAILED' },
         });
-        return ctx.reply('❌ Payment creation failed. Please try again.');
+        return ctx.reply('❌ Payment creation failed.');
       }
 
       await prisma.payment.create({
@@ -58,30 +56,30 @@ module.exports = (bot) => {
       const paymentText = `💳 <b>PAYMENT CREATED</b>\n✦━━━━━━━━━━━━━━━━✦\n\n📦 Product: ${plan.product.name}\n⏱️ Plan: ${plan.durationLabel}\n💰 Amount: ₹${plan.price}\n🧾 Order ID: <code>${order.id.slice(0,8)}</code>\n\n👇 <b>Scan QR to pay</b>`;
 
       const buttons = Markup.inlineKeyboard([
-        [Markup.button.url('🔗 Pay via Link', famResponse.payment_url || famResponse.qr_text)],
+        [Markup.button.url('🔗 Pay via Link', famResponse.qr_text)],
         [Markup.button.callback('✅ I Have Paid', `paid_${order.id}`)],
         [Markup.button.callback('❌ Cancel Order', `cancel_${order.id}`)],
       ]);
 
-      // ✅ QR image को download करके buffer भेजें
-      if (famResponse.qr_image) {
+      // ✅ Generate QR locally from UPI link (fast, no network)
+      if (famResponse.qr_text) {
         try {
-          const imageResponse = await axios.get(famResponse.qr_image, {
-            responseType: 'arraybuffer',
-            timeout: 20000, // 20 sec
+          const qrBuffer = await QRCode.toBuffer(famResponse.qr_text, {
+            type: 'png',
+            width: 300,
+            margin: 2,
+            errorCorrectionLevel: 'M',
           });
-          const imageBuffer = Buffer.from(imageResponse.data, 'binary');
-
           await ctx.replyWithPhoto(
-            { source: imageBuffer },
+            { source: qrBuffer },
             {
               caption: paymentText,
               parse_mode: 'HTML',
               ...buttons,
             }
           );
-        } catch (photoError) {
-          logger.error('QR image send failed, fallback to UPI link:', photoError.message);
+        } catch (qrError) {
+          logger.error('QR generation failed, fallback to text:', qrError.message);
           await ctx.replyWithHTML(
             paymentText + `\n\n🔗 <b>UPI Link:</b>\n<code>${famResponse.qr_text}</code>`,
             buttons
@@ -95,14 +93,12 @@ module.exports = (bot) => {
       }
     } catch (error) {
       logger.error('Payment creation error:', error);
-      ctx.answerCbQuery().catch(() => {});
-      ctx.reply('❌ An error occurred. Please try again.').catch(() => {});
+      ctx.reply('❌ An error occurred.').catch(() => {});
     }
   });
 
-  // ✅ I Have Paid – verification (Real only)
   bot.action(/^paid_(.+)$/, async (ctx) => {
-    ctx.answerCbQuery('⏳ Verifying...').catch(() => {});
+    ctx.answerCbQuery('⏳ Checking...').catch(() => {});
 
     try {
       const orderId = ctx.match[1];
@@ -112,18 +108,15 @@ module.exports = (bot) => {
       });
 
       if (!order || order.user.telegramId !== BigInt(ctx.from.id)) {
-        return ctx.answerCbQuery('❌ Order not found.').catch(() => {});
+        return ctx.answerCbQuery('❌ Not found.').catch(() => {});
       }
-
       if (order.paymentStatus === 'SUCCESS') {
-        return ctx.answerCbQuery('✅ Payment already verified.').catch(() => {});
+        return ctx.answerCbQuery('✅ Already verified.').catch(() => {});
       }
-
       if (order.status === 'CANCELLED' || order.status === 'EXPIRED') {
-        return ctx.answerCbQuery('❌ Order is no longer active.').catch(() => {});
+        return ctx.answerCbQuery('❌ Order inactive.').catch(() => {});
       }
 
-      // Real verification via FamGateway
       const verification = await famgateway.verifyPayment(order.payment.famgatewayOrderId);
 
       if (verification.status === 'SUCCESS') {
@@ -153,44 +146,34 @@ module.exports = (bot) => {
           }).catch((err) => logger.error('Admin notify error:', err));
         }
 
-        await ctx.reply('✅ Payment received successfully!\n👨‍💼 Your order has been sent to admin for approval.');
+        await ctx.reply('✅ Payment received!\n👨‍💼 Sent to admin for approval.');
       } else if (verification.status === 'PENDING') {
-        await ctx.reply('⏳ Payment is still pending. Please wait.');
+        await ctx.reply('⏳ Payment pending. Wait for confirmation.');
       } else {
         await prisma.order.update({
           where: { id: orderId },
           data: { status: 'EXPIRED', paymentStatus: 'FAILED' },
         });
-        await ctx.reply('❌ Payment was not detected. Please create a new order.');
+        await ctx.reply('❌ Payment not detected.');
       }
     } catch (error) {
-      logger.error('Payment verification error:', error);
-      ctx.answerCbQuery('❌ Error. Try again.').catch(() => {});
+      logger.error('Verification error:', error);
+      ctx.reply('❌ Error.').catch(() => {});
     }
   });
 
-  // ❌ Cancel order
   bot.action(/^cancel_(.+)$/, async (ctx) => {
     ctx.answerCbQuery().catch(() => {});
     try {
       const orderId = ctx.match[1];
       const order = await prisma.order.findUnique({ where: { id: orderId } });
-
-      if (!order || order.userId !== BigInt(ctx.from.id)) {
-        return ctx.answerCbQuery('❌ Order not found.').catch(() => {});
-      }
-      if (order.paymentStatus === 'SUCCESS') {
-        return ctx.answerCbQuery('❌ Cannot cancel paid order.').catch(() => {});
-      }
-
-      await prisma.order.update({
-        where: { id: orderId },
-        data: { status: 'CANCELLED' },
-      });
+      if (!order || order.userId !== BigInt(ctx.from.id)) return ctx.answerCbQuery('❌ Not found.').catch(() => {});
+      if (order.paymentStatus === 'SUCCESS') return ctx.answerCbQuery('❌ Cannot cancel.').catch(() => {});
+      await prisma.order.update({ where: { id: orderId }, data: { status: 'CANCELLED' } });
       await ctx.reply('❌ Order cancelled.');
     } catch (error) {
       logger.error('Cancel error:', error);
-      ctx.reply('❌ Error cancelling order.').catch(() => {});
+      ctx.reply('❌ Error.').catch(() => {});
     }
   });
 };
