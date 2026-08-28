@@ -13,17 +13,14 @@ const logger = require('./utils/logger');
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// Trust proxy for Render
 app.set('trust proxy', 1);
 
-// Middleware
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(compression());
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Session
 app.use(session({
   secret: process.env.SESSION_SECRET || 'ff-store-secret',
   resave: false,
@@ -35,17 +32,14 @@ app.use(session({
   },
 }));
 
-// Rate limiting
 app.use('/admin/login', rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
 }));
 
-// View engine
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'admin/views'));
 
-// Health check
 app.get('/', (req, res) => {
   res.json({ status: 'ok', service: 'FF STORE' });
 });
@@ -54,7 +48,6 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-// /admin redirect
 app.get('/admin', (req, res) => {
   if (req.session.adminId) {
     res.redirect('/admin/dashboard');
@@ -63,43 +56,26 @@ app.get('/admin', (req, res) => {
   }
 });
 
-// Admin routes
 app.use('/admin', require('./admin/routes/auth'));
 app.use('/admin', require('./admin/routes/dashboard'));
 app.use('/admin', require('./admin/routes/products'));
 app.use('/admin', require('./admin/routes/orders'));
 app.use('/admin', require('./admin/routes/emojis'));
 
-// ✅ FamGateway Payment Webhook (corrected to use gateway order ID)
+// Webhook
 app.post('/payment/webhook', async (req, res) => {
   try {
     const payload = req.body;
     logger.info('FamGateway webhook received:', payload);
 
-    // FamGateway webhook payload (example):
-    // {
-    //   amount: "100.00",
-    //   event: "payment.success",
-    //   is_test: true,
-    //   order_id: "TEST-6A913E896FFBC",   <-- gateway's order ID
-    //   payable_amount: "100.00",
-    //   payment_time: "28-08-2026 13:23:45",
-    //   sender_name: "FamGateway Tester",
-    //   status: "success",
-    //   timestamp: 1787903625,
-    //   transaction_id: "TEST_TXN_6A913E896FFBF",
-    //   utr: "856665956665"
-    // }
-
     const gatewayOrderId = payload.order_id || payload.gateway_order_id || payload.fam_order_id;
     const status = (payload.status || '').toLowerCase();
 
     if (!gatewayOrderId || !status) {
-      logger.error('Invalid webhook payload: missing order_id or status');
-      return res.status(200).send('OK'); // avoid retries
+      logger.error('Invalid webhook payload');
+      return res.status(200).send('OK');
     }
 
-    // Find payment using gateway order ID
     const payment = await prisma.payment.findUnique({
       where: { famgatewayOrderId: gatewayOrderId },
       include: { order: true },
@@ -107,10 +83,9 @@ app.post('/payment/webhook', async (req, res) => {
 
     if (!payment) {
       logger.error(`Payment not found for gateway order_id: ${gatewayOrderId}`);
-      return res.status(200).send('OK'); // prevent retries
+      return res.status(200).send('OK');
     }
 
-    // Map status
     let paymentStatus, orderStatus;
     switch (status) {
       case 'success':
@@ -136,7 +111,6 @@ app.post('/payment/webhook', async (req, res) => {
         orderStatus = 'PENDING';
     }
 
-    // Idempotent update
     if (payment.status !== paymentStatus || payment.order.status !== orderStatus) {
       await prisma.$transaction(async (tx) => {
         await tx.payment.update({
@@ -149,7 +123,6 @@ app.post('/payment/webhook', async (req, res) => {
         });
       });
 
-      // Notify admins if success
       if (paymentStatus === 'SUCCESS') {
         const order = await prisma.order.findUnique({
           where: { id: payment.orderId },
@@ -178,6 +151,13 @@ app.post('/payment/webhook', async (req, res) => {
               ...adminButtons,
             }).catch((err) => logger.error('Webhook admin notify error:', err));
           }
+
+          // ✅ User notification
+          await bot.telegram.sendMessage(
+            order.user.telegramId.toString(),
+            `✅ <b>Payment Confirmed!</b>\n\n📦 Product: ${order.product.name}\n⏱️ Plan: ${order.plan.durationLabel}\n💰 Amount: ₹${order.amount}\n🧾 Order ID: <code>${order.id.slice(0,8)}</code>\n\n👨‍💼 Sent to admin for approval.`,
+            { parse_mode: 'HTML' }
+          ).catch((err) => logger.error('Webhook user notify error:', err));
         }
       }
     }
@@ -185,16 +165,14 @@ app.post('/payment/webhook', async (req, res) => {
     return res.status(200).send('OK');
   } catch (error) {
     logger.error('Webhook processing error:', error);
-    return res.status(200).send('OK'); // still return 200 to avoid retries
+    return res.status(200).send('OK');
   }
 });
 
-// Start bot (long polling for Render free)
 bot.launch().catch((err) => {
   logger.error('Bot launch failed:', err);
 });
 
-// Start server
 app.listen(PORT, () => {
   logger.info(`🚀 FF STORE running on port ${PORT}`);
   logger.info(`📊 Admin: http://localhost:${PORT}/admin`);
