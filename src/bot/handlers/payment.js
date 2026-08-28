@@ -1,16 +1,15 @@
 const { Markup } = require('telegraf');
-const axios = require('axios');
 const prisma = require('../../services/db');
 const famgateway = require('../../services/famgateway');
-const { formatWithCustomEmoji } = require('../../services/emojiService');
 const logger = require('../../utils/logger');
 
 module.exports = (bot) => {
   // 💳 Payment create action
   bot.action(/^pay_(\d+)$/, async (ctx) => {
-    try {
-      await ctx.answerCbQuery();
+    // ✅ Callback query को तुरंत answer करें (await न करें)
+    ctx.answerCbQuery().catch(() => {});
 
+    try {
       const planId = parseInt(ctx.match[1]);
       const plan = await prisma.plan.findUnique({
         where: { id: planId },
@@ -58,27 +57,25 @@ module.exports = (bot) => {
       const paymentText = `💳 <b>PAYMENT CREATED</b>\n✦━━━━━━━━━━━━━━━━✦\n\n📦 Product: ${plan.product.name}\n⏱️ Plan: ${plan.durationLabel}\n💰 Amount: ₹${plan.price}\n🧾 Order ID: <code>${order.id.slice(0,8)}</code>\n\n👇 <b>Scan QR to pay</b>`;
 
       const buttons = Markup.inlineKeyboard([
+        [Markup.button.url('🔗 Pay via Link', famResponse.payment_url || famResponse.qr_text)],
         [Markup.button.callback('✅ I Have Paid', `paid_${order.id}`)],
         [Markup.button.callback('❌ Cancel Order', `cancel_${order.id}`)],
       ]);
 
+      // ✅ QR image सीधे URL से भेजें
       if (famResponse.qr_image) {
         try {
-          const imageResponse = await axios.get(famResponse.qr_image, {
-            responseType: 'arraybuffer',
-            timeout: 10000,
-          });
-          const imageBuffer = Buffer.from(imageResponse.data, 'binary');
           await ctx.replyWithPhoto(
-            { source: imageBuffer },
+            { url: famResponse.qr_image },   // Telegram खुद fetch करेगा
             {
               caption: paymentText,
               parse_mode: 'HTML',
               ...buttons,
             }
           );
-        } catch (qrError) {
-          logger.error('QR image download/send failed, fallback to UPI link:', qrError);
+        } catch (photoError) {
+          logger.error('QR photo send failed, using text fallback:', photoError.message);
+          // Fallback: UPI link text के साथ
           await ctx.replyWithHTML(
             paymentText + `\n\n🔗 <b>UPI Link:</b>\n<code>${famResponse.qr_text}</code>`,
             buttons
@@ -92,15 +89,18 @@ module.exports = (bot) => {
       }
     } catch (error) {
       logger.error('Payment creation error:', error);
-      await ctx.reply('❌ An error occurred. Please try again.');
+      // अगर callback answer नहीं हुआ तो कोशिश करें
+      ctx.answerCbQuery().catch(() => {});
+      ctx.reply('❌ An error occurred. Please try again.').catch(() => {});
     }
   });
 
   // ✅ I Have Paid – verification (with mock support)
   bot.action(/^paid_(.+)$/, async (ctx) => {
-    try {
-      await ctx.answerCbQuery('⏳ Verifying payment...');
+    // तुरंत answer करें
+    ctx.answerCbQuery('⏳ Verifying...').catch(() => {});
 
+    try {
       const orderId = ctx.match[1];
       const order = await prisma.order.findUnique({
         where: { id: orderId },
@@ -108,24 +108,22 @@ module.exports = (bot) => {
       });
 
       if (!order || order.user.telegramId !== BigInt(ctx.from.id)) {
-        return ctx.answerCbQuery('❌ Order not found.');
+        return ctx.answerCbQuery('❌ Order not found.').catch(() => {});
       }
 
       if (order.paymentStatus === 'SUCCESS') {
-        return ctx.answerCbQuery('✅ Payment already verified.');
+        return ctx.answerCbQuery('✅ Payment already verified.').catch(() => {});
       }
 
       if (order.status === 'CANCELLED' || order.status === 'EXPIRED') {
-        return ctx.answerCbQuery('❌ Order is no longer active.');
+        return ctx.answerCbQuery('❌ Order is no longer active.').catch(() => {});
       }
 
       let verification;
       if (process.env.MOCK_PAYMENT === 'true') {
-        // ✅ Mock mode: always success (for testing)
         logger.warn('MOCK_PAYMENT mode enabled - returning SUCCESS');
         verification = { status: 'SUCCESS' };
       } else {
-        // Real verification via FamGateway
         verification = await famgateway.verifyPayment(order.payment.famgatewayOrderId);
       }
 
@@ -168,22 +166,22 @@ module.exports = (bot) => {
       }
     } catch (error) {
       logger.error('Payment verification error:', error);
-      await ctx.answerCbQuery('❌ Verification error. Try again.');
+      ctx.answerCbQuery('❌ Error. Try again.').catch(() => {});
     }
   });
 
   // ❌ Cancel order
   bot.action(/^cancel_(.+)$/, async (ctx) => {
+    ctx.answerCbQuery().catch(() => {});
     try {
-      await ctx.answerCbQuery();
       const orderId = ctx.match[1];
       const order = await prisma.order.findUnique({ where: { id: orderId } });
 
       if (!order || order.userId !== BigInt(ctx.from.id)) {
-        return ctx.answerCbQuery('❌ Order not found.');
+        return ctx.answerCbQuery('❌ Order not found.').catch(() => {});
       }
       if (order.paymentStatus === 'SUCCESS') {
-        return ctx.answerCbQuery('❌ Cannot cancel paid order.');
+        return ctx.answerCbQuery('❌ Cannot cancel paid order.').catch(() => {});
       }
 
       await prisma.order.update({
@@ -193,7 +191,7 @@ module.exports = (bot) => {
       await ctx.reply('❌ Order cancelled.');
     } catch (error) {
       logger.error('Cancel error:', error);
-      await ctx.answerCbQuery('❌ Error cancelling order.');
+      ctx.reply('❌ Error cancelling order.').catch(() => {});
     }
   });
 };
