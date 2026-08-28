@@ -54,6 +54,15 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
+// ✅ /admin redirect (add kiya gaya)
+app.get('/admin', (req, res) => {
+  if (req.session.adminId) {
+    res.redirect('/admin/dashboard');
+  } else {
+    res.redirect('/admin/login');
+  }
+});
+
 // Admin routes
 app.use('/admin', require('./admin/routes/auth'));
 app.use('/admin', require('./admin/routes/dashboard'));
