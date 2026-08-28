@@ -1,42 +1,30 @@
 const axios = require('axios');
 const logger = require('../utils/logger');
 
-// Environment variables (Render dashboard mein set karo)
-const FAM_BASE_URL = process.env.FAMGATEWAY_BASE_URL || 'https://api.famgateway.in';
-const FAM_CREATE_ENDPOINT = process.env.FAMGATEWAY_CREATE_ENDPOINT || '/order/create';
-const FAM_STATUS_ENDPOINT = process.env.FAMGATEWAY_STATUS_ENDPOINT || '/order/status/';
+// Environment variables (Render में ये values set करो)
+const FAM_BASE_URL = process.env.FAMGATEWAY_BASE_URL || 'https://famgateway.in';
+const FAM_CREATE_ENDPOINT = process.env.FAMGATEWAY_CREATE_ENDPOINT || '/api/qr.php';
+const FAM_STATUS_ENDPOINT = process.env.FAMGATEWAY_STATUS_ENDPOINT || '/api/status.php/';
 const FAM_API_KEY = process.env.FAMGATEWAY_API_KEY;
 const FAM_MERCHANT_ID = process.env.FAMGATEWAY_MERCHANT_ID;
 
-/**
- * Create a payment order via FamGateway.
- * @param {object} params
- * @param {number|string} params.amount - Amount in INR (decimal)
- * @param {string} params.orderId - Internal order UUID
- * @param {string} params.customerName - Customer name
- * @returns {Promise<object>} { success, fam_order_id, qr_text, qr_image, payment_url, error? }
- */
 async function createPayment({ amount, orderId, customerName }) {
   try {
-    // Convert amount to number (required by FamGateway)
+    // ✅ Convert to number, then to string with 2 decimals
     const numericAmount = Number(amount);
     if (isNaN(numericAmount) || numericAmount <= 0) {
-      logger.error(`Invalid amount provided: ${amount}`);
+      logger.error(`Invalid amount: ${amount}`);
       return { success: false, error: 'Invalid amount' };
     }
-
-    // Optional: If FamGateway expects paise (integer), uncomment next line
-    // const amountInPaise = Math.round(numericAmount * 100);
+    const amountString = numericAmount.toFixed(2); // "1.00", "50.00", "100.50"
 
     const payload = {
       merchant_id: FAM_MERCHANT_ID,
-      order_id: orderId,                    // internal UUID
-      amount: numericAmount,                // ✅ number (e.g., 1, 50, 100.5)
+      order_id: orderId,
+      amount: amountString,        // ✅ string with two decimals
       customer_name: customerName,
       currency: 'INR',
-      // Add these if required by docs:
-      // webhook_url: `${process.env.WEBHOOK_URL}/payment/webhook`,
-      // redirect_url: 'https://your-callback-url.com',
+      // Add other fields if docs require
     };
 
     const url = `${FAM_BASE_URL}${FAM_CREATE_ENDPOINT}`;
@@ -44,29 +32,24 @@ async function createPayment({ amount, orderId, customerName }) {
     logger.info(`FamGateway Payload:`, payload);
 
     const response = await axios.post(url, payload, {
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      params: {
-        api_key: FAM_API_KEY,               // ✅ query param
-      },
+      headers: { 'Content-Type': 'application/json' },
+      params: { api_key: FAM_API_KEY },
     });
 
     logger.info('FamGateway create response:', response.data);
 
-    // Extract gateway's own order ID (may be named differently)
     const famOrderId = response.data.fam_order_id || 
                        response.data.gateway_order_id || 
                        response.data.order_id;
 
     if (!famOrderId) {
-      logger.error('FamGateway response did not contain gateway order ID:', response.data);
-      return { success: false, error: 'Invalid response from gateway' };
+      logger.error('FamGateway response missing gateway order ID:', response.data);
+      return { success: false, error: 'Invalid gateway response' };
     }
 
     return {
       success: true,
-      fam_order_id: famOrderId,             // ✅ store in DB
+      fam_order_id: famOrderId,
       qr_text: response.data.qr_text || response.data.upi_link || response.data.payment_link || response.data.qr_code,
       qr_image: response.data.qr_image || response.data.qr_code_image || null,
       payment_url: response.data.payment_url || response.data.redirect_url || null,
@@ -84,15 +67,8 @@ async function createPayment({ amount, orderId, customerName }) {
   }
 }
 
-/**
- * Verify payment status via FamGateway.
- * @param {string} famOrderId - Gateway order ID
- * @returns {Promise<object>} { status: 'SUCCESS'|'PENDING'|'FAILED'|'EXPIRED' }
- */
 async function verifyPayment(famOrderId) {
   try {
-    logger.info(`Verifying FamGateway payment: ${famOrderId}`);
-
     const url = `${FAM_BASE_URL}${FAM_STATUS_ENDPOINT}${famOrderId}`;
     logger.info(`FamGateway Verify URL: ${url}`);
 
@@ -105,7 +81,6 @@ async function verifyPayment(famOrderId) {
 
     const rawStatus = response.data.status || response.data.payment_status || '';
     const statusUpper = String(rawStatus).toUpperCase();
-
     let status;
     if (['SUCCESS', 'COMPLETED', 'PAID'].includes(statusUpper)) status = 'SUCCESS';
     else if (['FAILED', 'CANCELLED', 'REJECTED'].includes(statusUpper)) status = 'FAILED';
