@@ -1,7 +1,6 @@
 const axios = require('axios');
 const logger = require('../utils/logger');
 
-// Environment variables (Render में ये values set करो)
 const FAM_BASE_URL = process.env.FAMGATEWAY_BASE_URL || 'https://famgateway.in';
 const FAM_CREATE_ENDPOINT = process.env.FAMGATEWAY_CREATE_ENDPOINT || '/api/qr.php';
 const FAM_STATUS_ENDPOINT = process.env.FAMGATEWAY_STATUS_ENDPOINT || '/api/status.php/';
@@ -10,21 +9,22 @@ const FAM_MERCHANT_ID = process.env.FAMGATEWAY_MERCHANT_ID;
 
 async function createPayment({ amount, orderId, customerName }) {
   try {
-    // ✅ Convert to number, then to string with 2 decimals
     const numericAmount = Number(amount);
     if (isNaN(numericAmount) || numericAmount <= 0) {
       logger.error(`Invalid amount: ${amount}`);
       return { success: false, error: 'Invalid amount' };
     }
-    const amountString = numericAmount.toFixed(2); // "1.00", "50.00", "100.50"
+
+    // ✅ Convert to paise (integer)
+    const amountInPaise = Math.round(numericAmount * 100);
+    logger.info(`Amount in paise: ${amountInPaise}`);
 
     const payload = {
       merchant_id: FAM_MERCHANT_ID,
       order_id: orderId,
-      amount: amountString,        // ✅ string with two decimals
+      amount: amountInPaise,        // ✅ integer paise, no decimal
       customer_name: customerName,
-      currency: 'INR',
-      // Add other fields if docs require
+      // currency: 'INR', // optional, remove if not needed
     };
 
     const url = `${FAM_BASE_URL}${FAM_CREATE_ENDPOINT}`;
