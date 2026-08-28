@@ -45,8 +45,8 @@ model Plan {
 
 model Order {
   id             String   @id @default(uuid())
-  userId         Int      @map("user_id")
-  user           User     @relation(fields: [userId], references: [id])
+  userId         BigInt   @map("user_id")                     // ✅ Int → BigInt
+  user           User     @relation(fields: [userId], references: [telegramId]) // ✅ reference telegramId
   productId      Int      @map("product_id")
   product        Product  @relation(fields: [productId], references: [id])
   planId         Int      @map("plan_id")
