@@ -1,13 +1,13 @@
 const { Markup } = require('telegraf');
 const prisma = require('../../services/db');
-const { formatWithCustomEmoji } = require('../../services/emojiService');
 const logger = require('../../utils/logger');
 
 module.exports = (bot) => {
   bot.action('buy_now', async (ctx) => {
+    // ✅ तुरंत answer करो (await मत करो)
+    ctx.answerCbQuery().catch(() => {});
+
     try {
-      await ctx.answerCbQuery();
-      
       const products = await prisma.product.findMany({
         where: { isActive: true },
         include: { plans: { where: { isActive: true }, orderBy: { sortOrder: 'asc' } } },
@@ -22,14 +22,15 @@ module.exports = (bot) => {
       await ctx.reply('🛒 Select a product:', Markup.inlineKeyboard(buttons));
     } catch (error) {
       logger.error('Buy handler error:', error);
-      await ctx.reply('❌ An error occurred.');
+      ctx.reply('❌ An error occurred.').catch(() => {});
     }
   });
 
   bot.action(/^product_(\d+)$/, async (ctx) => {
+    // ✅ तुरंत answer करो
+    ctx.answerCbQuery().catch(() => {});
+
     try {
-      await ctx.answerCbQuery();
-      
       const productId = parseInt(ctx.match[1]);
       const product = await prisma.product.findUnique({
         where: { id: productId },
@@ -47,14 +48,15 @@ module.exports = (bot) => {
         Markup.inlineKeyboard(planButtons));
     } catch (error) {
       logger.error('Product handler error:', error);
-      await ctx.reply('❌ An error occurred.');
+      ctx.reply('❌ An error occurred.').catch(() => {});
     }
   });
 
   bot.action(/^plan_(\d+)$/, async (ctx) => {
+    // ✅ तुरंत answer करो
+    ctx.answerCbQuery().catch(() => {});
+
     try {
-      await ctx.answerCbQuery();
-      
       const planId = parseInt(ctx.match[1]);
       const plan = await prisma.plan.findUnique({
         where: { id: planId },
@@ -73,7 +75,7 @@ module.exports = (bot) => {
       await ctx.replyWithHTML(text, buttons);
     } catch (error) {
       logger.error('Plan handler error:', error);
-      await ctx.reply('❌ An error occurred.');
+      ctx.reply('❌ An error occurred.').catch(() => {});
     }
   });
 };
