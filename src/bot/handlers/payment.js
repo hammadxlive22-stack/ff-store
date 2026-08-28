@@ -6,6 +6,7 @@ const logger = require('../../utils/logger');
 
 module.exports = (bot) => {
   bot.action(/^pay_(\d+)$/, async (ctx) => {
+    // ✅ सबसे पहले callback answer करो (कोई await नहीं)
     ctx.answerCbQuery().catch(() => {});
 
     try {
@@ -53,7 +54,7 @@ module.exports = (bot) => {
         },
       });
 
-      // ✅ Step 1: Text message with UPI link (turant)
+      // ✅ Step 1: UPI link text message तुरंत भेजो
       const textMsg = `💳 <b>PAYMENT CREATED</b>\n✦━━━━━━━━━━━━━━━━✦\n\n📦 Product: ${plan.product.name}\n⏱️ Plan: ${plan.durationLabel}\n💰 Amount: ₹${plan.price}\n🧾 Order ID: <code>${order.id.slice(0,8)}</code>\n\n🔗 <b>UPI Link:</b>\n<code>${famResponse.qr_text}</code>`;
 
       const buttons = Markup.inlineKeyboard([
@@ -64,34 +65,38 @@ module.exports = (bot) => {
 
       await ctx.replyWithHTML(textMsg, buttons);
 
-      // ✅ Step 2: QR generate & send (koi timeout nahi)
+      // ✅ Step 2: QR generate और भेजो (optimized)
       if (famResponse.qr_text) {
+        // छोटा QR (200px) ताकि तेज़ बने
         try {
-          // QR buffer generate karo (local, fast)
+          // User को बताओ कि QR आ रहा है
+          await ctx.replyWithChatAction('upload_photo').catch(() => {});
           const qrBuffer = await QRCode.toBuffer(famResponse.qr_text, {
             type: 'png',
-            width: 300,
-            margin: 2,
+            width: 200,
+            margin: 1,
             errorCorrectionLevel: 'M',
           });
 
-          // Photo bhejo
+          // Photo भेजो
           try {
             await ctx.replyWithPhoto(
               { source: qrBuffer },
               { caption: '👇 Scan this QR to pay' }
             );
-            logger.info('QR photo sent');
+            logger.info('QR photo sent successfully');
           } catch (photoError) {
-            // Document bhejo (fallback)
+            logger.warn('Photo send failed, trying document:', photoError.message);
+            // Document fallback
             try {
               await ctx.replyWithDocument(
                 { source: qrBuffer, filename: 'payment-qr.png' },
                 { caption: '👇 Scan this QR to pay' }
               );
-              logger.info('QR document sent');
+              logger.info('QR document sent successfully');
             } catch (docError) {
-              logger.error('QR document failed:', docError.message);
+              logger.warn('Document send also failed:', docError.message);
+              // UPI link पहले से भेज दिया गया है
             }
           }
         } catch (qrGenError) {
@@ -104,7 +109,7 @@ module.exports = (bot) => {
     }
   });
 
-  // ✅ I Have Paid – verification (same as before)
+  // ✅ I Have Paid – verification (कोई बदलाव नहीं)
   bot.action(/^paid_(.+)$/, async (ctx) => {
     ctx.answerCbQuery('⏳ Checking...').catch(() => {});
 
