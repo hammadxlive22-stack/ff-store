@@ -58,10 +58,10 @@ module.exports = (bot) => {
       const paymentText = `💳 <b>PAYMENT CREATED</b>\n✦━━━━━━━━━━━━━━━━✦\n\n📦 Product: ${plan.product.name}\n⏱️ Plan: ${plan.durationLabel}\n💰 Amount: ₹${plan.price}\n🧾 Order ID: <code>${order.id.slice(0,8)}</code>\n\n👇 <b>Scan QR to pay</b>`;
 
       const buttons = Markup.inlineKeyboard([
-        [Markup.button.url('🔗 Pay via Link', famResponse.qr_text || 'https://t.me')],
-        [Markup.button.callback('✅ I Have Paid', `paid_${order.id}`)],
-        [Markup.button.callback('❌ Cancel Order', `cancel_${order.id}`)],
-      ]);
+  [Markup.button.url('🔗 Pay via Link', famResponse.payment_url || 'https://famgateway.in')],
+  [Markup.button.callback('✅ I Have Paid', `paid_${order.id}`)],
+  [Markup.button.callback('❌ Cancel Order', `cancel_${order.id}`)],
+]);
 
       // ✅ QR code locally generate करें
       if (famResponse.qr_text) {
