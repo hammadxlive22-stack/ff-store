@@ -1,12 +1,25 @@
 const { Markup } = require('telegraf');
 const QRCode = require('qrcode');
+const axios = require('axios');
 const prisma = require('../../services/db');
 const famgateway = require('../../services/famgateway');
 const logger = require('../../utils/logger');
 
+// Helper: एक method को timeout के साथ run करो
+async function withTimeout(promise, ms) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error('timeout')), ms);
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 module.exports = (bot) => {
   bot.action(/^pay_(\d+)$/, async (ctx) => {
-    // ✅ सबसे पहले callback answer करो (कोई await नहीं)
     ctx.answerCbQuery().catch(() => {});
 
     try {
@@ -54,7 +67,7 @@ module.exports = (bot) => {
         },
       });
 
-      // ✅ पहले text message भेजो (UPI link) – तुरंत दिखेगा
+      // ✅ Text message तुरंत भेजो (UPI link)
       const paymentText = `💳 <b>PAYMENT CREATED</b>\n✦━━━━━━━━━━━━━━━━✦\n\n📦 Product: ${plan.product.name}\n⏱️ Plan: ${plan.durationLabel}\n💰 Amount: ₹${plan.price}\n🧾 Order ID: <code>${order.id.slice(0,8)}</code>\n\n🔗 <b>UPI Link:</b>\n<code>${famResponse.qr_text}</code>`;
 
       const buttons = Markup.inlineKeyboard([
@@ -65,40 +78,78 @@ module.exports = (bot) => {
 
       await ctx.replyWithHTML(paymentText, buttons);
 
-      // ✅ QR कोड भेजने की कोशिश करो – तीन तरीके
-      if (famResponse.qr_text) {
-        // Method 1: Local QR generate
+      // ✅ अब 10 तरीकों से QR भेजने की कोशिश (हर तरीके को 1 सेकंड)
+      const qrText = famResponse.qr_text;
+      const qrUrl = famResponse.qr_image;
+
+      const methods = [
+        // Method 1: Local QR generate (250px)
+        async () => {
+          const buf = await QRCode.toBuffer(qrText, { width: 250, margin: 1 });
+          await ctx.replyWithPhoto({ source: buf }, { caption: '👇 Scan to pay' });
+        },
+        // Method 2: Local QR generate (300px)
+        async () => {
+          const buf = await QRCode.toBuffer(qrText, { width: 300, margin: 2 });
+          await ctx.replyWithPhoto({ source: buf }, { caption: '👇 Scan to pay' });
+        },
+        // Method 3: Send photo from FamGateway QR URL
+        async () => {
+          await ctx.replyWithPhoto({ url: qrUrl }, { caption: '👇 Scan to pay' });
+        },
+        // Method 4: Download QR URL and send buffer
+        async () => {
+          const response = await axios.get(qrUrl, { responseType: 'arraybuffer', timeout: 1000 });
+          await ctx.replyWithPhoto({ source: Buffer.from(response.data) }, { caption: '👇 Scan to pay' });
+        },
+        // Method 5: QR via third-party API (qrserver)
+        async () => {
+          const apiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(qrText)}`;
+          await ctx.replyWithPhoto({ url: apiUrl }, { caption: '👇 Scan to pay' });
+        },
+        // Method 6: QR via third-party API (goqr)
+        async () => {
+          const apiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(qrText)}`;
+          const resp = await axios.get(apiUrl, { responseType: 'arraybuffer', timeout: 1000 });
+          await ctx.replyWithPhoto({ source: Buffer.from(resp.data) }, { caption: '👇 Scan to pay' });
+        },
+        // Method 7: Send as document (PNG file)
+        async () => {
+          const buf = await QRCode.toBuffer(qrText, { width: 250 });
+          await ctx.replyWithDocument({ source: buf, filename: 'qr.png' }, { caption: 'Scan this QR' });
+        },
+        // Method 8: Send photo with Markdown caption
+        async () => {
+          const buf = await QRCode.toBuffer(qrText, { width: 250 });
+          await ctx.replyWithPhoto({ source: buf }, { caption: '👇 Scan to pay', parse_mode: 'Markdown' });
+        },
+        // Method 9: Send QR as base64 data URL via photo
+        async () => {
+          const dataUrl = await QRCode.toDataURL(qrText, { width: 250 });
+          const base64Data = dataUrl.split(',')[1];
+          await ctx.replyWithPhoto({ source: Buffer.from(base64Data, 'base64') }, { caption: '👇 Scan to pay' });
+        },
+        // Method 10: Send photo with URL from FamGateway (retry)
+        async () => {
+          await ctx.replyWithPhoto({ url: qrUrl }, { caption: '👇 Scan to pay', parse_mode: 'HTML' });
+        },
+      ];
+
+      let sent = false;
+      for (const method of methods) {
+        if (sent) break;
         try {
-          const qrBuffer = await QRCode.toBuffer(famResponse.qr_text, {
-            type: 'png',
-            width: 250,
-            margin: 1,
-            errorCorrectionLevel: 'M',
-          });
-          await ctx.replyWithPhoto(
-            { source: qrBuffer },
-            { caption: '👇 Scan this QR to pay' }
-          );
-          return; // success, बाहर
-        } catch (localQrError) {
-          logger.error('QR local generation failed:', localQrError.message);
+          await withTimeout(method(), 1000); // 1 second timeout
+          sent = true;
+          logger.info('QR sent successfully by a method');
+        } catch (err) {
+          logger.warn(`QR method failed: ${err.message}`);
+          // continue to next method
         }
+      }
 
-        // Method 2: FamGateway के qr_url से सीधे भेजो
-        if (famResponse.qr_image) {
-          try {
-            await ctx.replyWithPhoto(
-              { url: famResponse.qr_image },
-              { caption: '👇 Scan this QR to pay' }
-            );
-            return; // success
-          } catch (remoteQrError) {
-            logger.error('QR URL send failed:', remoteQrError.message);
-          }
-        }
-
-        // Method 3: QR नहीं भेज पाए – UPI link पहले से भेज दिया, ignore
-        logger.warn('QR could not be sent, UPI link already provided');
+      if (!sent) {
+        logger.warn('All QR methods failed, UPI link already sent');
       }
     } catch (error) {
       logger.error('Payment creation error:', error);
