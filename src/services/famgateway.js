@@ -1,11 +1,9 @@
 const axios = require('axios');
 const logger = require('../utils/logger');
 
-// Base URL and endpoint configuration
 const FAM_BASE_URL = process.env.FAMGATEWAY_BASE_URL || 'https://api.famgateway.in';
-const FAM_CREATE_ENDPOINT = process.env.FAMGATEWAY_CREATE_ENDPOINT || '/order/create'; // adjust as per docs
-const FAM_STATUS_ENDPOINT = process.env.FAMGATEWAY_STATUS_ENDPOINT || '/order/status'; // adjust
-
+const FAM_CREATE_ENDPOINT = process.env.FAMGATEWAY_CREATE_ENDPOINT || '/order/create';
+const FAM_STATUS_ENDPOINT = process.env.FAMGATEWAY_STATUS_ENDPOINT || '/order/status/';
 const FAM_API_KEY = process.env.FAMGATEWAY_API_KEY;
 const FAM_MERCHANT_ID = process.env.FAMGATEWAY_MERCHANT_ID;
 
@@ -15,29 +13,25 @@ async function createPayment({ amount, orderId, customerName }) {
 
     const payload = {
       merchant_id: FAM_MERCHANT_ID,
-      order_id: orderId,
+      order_id: orderId,           // internal order ID (UUID)
       amount: amount,
       customer_name: customerName,
       currency: 'INR',
-      // webhook_url: `${process.env.WEBHOOK_URL}/payment/webhook`, // optional
-      // redirect_url: 'https://your-callback-url.com',
     };
 
-    // Log request details (remove in production)
-    logger.info('Request URL:', `${FAM_BASE_URL}${FAM_CREATE_ENDPOINT}`);
+    const url = `${FAM_BASE_URL}${FAM_CREATE_ENDPOINT}`;
+    logger.info('Request URL:', url);
     logger.info('Request payload:', payload);
 
-    const response = await axios.post(
-      `${FAM_BASE_URL}${FAM_CREATE_ENDPOINT}`,
-      payload,
-      {
-        headers: {
-          'Authorization': `Bearer ${FAM_API_KEY}`,
-          'Content-Type': 'application/json',
-          // Some APIs use x-api-key or other headers; adjust accordingly
-        },
-      }
-    );
+    // Auth via api_key query parameter (common for such APIs)
+    const response = await axios.post(url, payload, {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      params: {
+        api_key: FAM_API_KEY,      // ✅ add api_key as query param
+      },
+    });
 
     logger.info('FamGateway create response:', response.data);
 
@@ -67,7 +61,10 @@ async function verifyPayment(famOrderId) {
 
     const response = await axios.get(url, {
       headers: {
-        'Authorization': `Bearer ${FAM_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      params: {
+        api_key: FAM_API_KEY,
       },
     });
 
