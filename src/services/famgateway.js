@@ -7,10 +7,9 @@ const FAM_MERCHANT_ID = process.env.FAMGATEWAY_MERCHANT_ID;
 
 async function createPayment({ amount, orderId, customerName }) {
   try {
-    logger.info(`Creating payment for order: ${orderId}`);
+    logger.info(`Creating FamGateway payment for order: ${orderId}`);
 
-    // Production API call
-    /*
+    // ⚠️ Replace with actual endpoint & payload from FamGateway docs
     const response = await axios.post(
       `${FAM_BASE_URL}/order/create`,
       {
@@ -19,6 +18,7 @@ async function createPayment({ amount, orderId, customerName }) {
         amount: amount,
         customer_name: customerName,
         currency: 'INR',
+        // Add any other required fields
       },
       {
         headers: {
@@ -27,28 +27,26 @@ async function createPayment({ amount, orderId, customerName }) {
         },
       }
     );
-    return response.data;
-    */
 
-    // Mock response
+    // ⚠️ Adjust response mapping as per actual API
     return {
       success: true,
-      fam_order_id: `FAM_${orderId.slice(0, 8)}_${Date.now()}`,
-      qr_text: `upi://pay?pa=ffstore@upi&pn=FF%20STORE&am=${amount}&cu=INR`,
-      payment_url: `https://pay.famgateway.com/${orderId.slice(0, 8)}`,
+      fam_order_id: response.data.order_id, // or response.data.fam_order_id
+      qr_text: response.data.qr_text || response.data.upi_link,
+      qr_image: response.data.qr_image || null, // base64 or URL
+      payment_url: response.data.payment_url || null,
     };
   } catch (error) {
-    logger.error('FamGateway create error:', error);
-    throw new Error('Failed to create payment');
+    logger.error('FamGateway create payment error:', error.response?.data || error.message);
+    return { success: false, error: error.response?.data?.message || 'Payment creation failed' };
   }
 }
 
 async function verifyPayment(famOrderId) {
   try {
-    logger.info(`Verifying payment: ${famOrderId}`);
+    logger.info(`Verifying FamGateway payment: ${famOrderId}`);
 
-    // Production API call
-    /*
+    // ⚠️ Replace with actual status endpoint
     const response = await axios.get(
       `${FAM_BASE_URL}/order/status/${famOrderId}`,
       {
@@ -57,19 +55,20 @@ async function verifyPayment(famOrderId) {
         },
       }
     );
-    return response.data;
-    */
 
-    // Mock response
-    return {
-      status: 'SUCCESS',
-      fam_order_id: famOrderId,
-      transaction_id: `TXN_${Date.now()}`,
-    };
+    // ⚠️ Map status to SUCCESS/PENDING/FAILED/EXPIRED
+    const status = response.data.status; // e.g., 'SUCCESS', 'PENDING', 'FAILED', 'EXPIRED'
+    return { status };
   } catch (error) {
-    logger.error('FamGateway verify error:', error);
+    logger.error('FamGateway verify error:', error.response?.data || error.message);
     return { status: 'FAILED' };
   }
 }
 
-module.exports = { createPayment, verifyPayment };
+// Optional webhook handler
+async function handleWebhook(payload) {
+  // Verify signature, update database accordingly
+  // This will be called from a route
+}
+
+module.exports = { createPayment, verifyPayment, handleWebhook };
