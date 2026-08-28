@@ -62,7 +62,7 @@ app.use('/admin', require('./admin/routes/products'));
 app.use('/admin', require('./admin/routes/orders'));
 app.use('/admin', require('./admin/routes/emojis'));
 
-// Webhook
+// ✅ FamGateway Payment Webhook
 app.post('/payment/webhook', async (req, res) => {
   try {
     const payload = req.body;
@@ -152,7 +152,7 @@ app.post('/payment/webhook', async (req, res) => {
             }).catch((err) => logger.error('Webhook admin notify error:', err));
           }
 
-          // ✅ User notification
+          // ✅ User को भी notify करो
           await bot.telegram.sendMessage(
             order.user.telegramId.toString(),
             `✅ <b>Payment Confirmed!</b>\n\n📦 Product: ${order.product.name}\n⏱️ Plan: ${order.plan.durationLabel}\n💰 Amount: ₹${order.amount}\n🧾 Order ID: <code>${order.id.slice(0,8)}</code>\n\n👨‍💼 Sent to admin for approval.`,
@@ -169,6 +169,7 @@ app.post('/payment/webhook', async (req, res) => {
   }
 });
 
+// Start bot
 bot.launch().catch((err) => {
   logger.error('Bot launch failed:', err);
 });
