@@ -70,51 +70,64 @@ app.use('/admin', require('./admin/routes/products'));
 app.use('/admin', require('./admin/routes/orders'));
 app.use('/admin', require('./admin/routes/emojis'));
 
-// ✅ FamGateway Payment Webhook
+// ✅ FamGateway Payment Webhook (corrected)
 app.post('/payment/webhook', async (req, res) => {
   try {
     const payload = req.body;
     logger.info('FamGateway webhook received:', payload);
 
-    // TODO: Verify webhook signature/secret if FamGateway provides one
-    // e.g., compare with process.env.FAMGATEWAY_WEBHOOK_SECRET
+    // Actual webhook payload (from logs):
+    // {
+    //   "amount": "100.00",
+    //   "event": "payment.success",
+    //   "is_test": true,
+    //   "order_id": "TEST-6A913A05206A3",  <-- internal order ID
+    //   "payable_amount": "100.00",
+    //   "payment_time": "28-08-2026 13:04:29",
+    //   "sender_name": "FamGateway Tester",
+    //   "status": "success",   <-- lowercase
+    //   "timestamp": 1787902469,
+    //   "transaction_id": "TEST_TXN_6A913A05206A6",
+    //   "utr": "652390534866"
+    // }
 
-    // Extract necessary fields (adjust as per actual webhook payload)
-    const { fam_order_id, status, order_id } = payload;
+    const internalOrderId = payload.order_id; // internal order ID (UUID)
+    const status = payload.status?.toLowerCase(); // "success", "pending", "failed"
 
-    if (!fam_order_id || !status) {
-      logger.error('Invalid webhook payload');
+    if (!internalOrderId || !status) {
+      logger.error('Invalid webhook payload: missing order_id or status');
       return res.status(400).send('Bad Request');
     }
 
-    // Find payment by famgateway_order_id
-    const payment = await prisma.payment.findUnique({
-      where: { famgatewayOrderId: fam_order_id },
-      include: { order: true },
+    // Find order by internal order ID
+    const order = await prisma.order.findUnique({
+      where: { id: internalOrderId },
+      include: { payment: true, user: true, product: true, plan: true },
     });
 
-    if (!payment) {
-      logger.error(`Payment not found for fam_order_id: ${fam_order_id}`);
-      return res.status(404).send('Not Found');
+    if (!order) {
+      logger.error(`Order not found for webhook order_id: ${internalOrderId}`);
+      return res.status(404).send('Order Not Found');
     }
 
-    // Map status to our internal status
+    // Map status to internal status
     let paymentStatus, orderStatus;
     switch (status) {
-      case 'SUCCESS':
-      case 'COMPLETED':
+      case 'success':
+      case 'completed':
+      case 'paid':
         paymentStatus = 'SUCCESS';
         orderStatus = 'PAYMENT_VERIFIED';
         break;
-      case 'PENDING':
+      case 'pending':
         paymentStatus = 'PENDING';
         orderStatus = 'PENDING';
         break;
-      case 'FAILED':
+      case 'failed':
         paymentStatus = 'FAILED';
         orderStatus = 'EXPIRED'; // or FAILED
         break;
-      case 'EXPIRED':
+      case 'expired':
         paymentStatus = 'EXPIRED';
         orderStatus = 'EXPIRED';
         break;
@@ -123,30 +136,21 @@ app.post('/payment/webhook', async (req, res) => {
         orderStatus = 'PENDING';
     }
 
-    // Update payment & order (idempotent, only if not already processed)
-    await prisma.$transaction(async (tx) => {
-      // Only update if not already the same status
-      if (payment.status !== paymentStatus || payment.order.status !== orderStatus) {
+    // Update only if status changed (idempotent)
+    if (order.paymentStatus !== paymentStatus || order.status !== orderStatus) {
+      await prisma.$transaction(async (tx) => {
         await tx.payment.update({
-          where: { id: payment.id },
+          where: { orderId: order.id },
           data: { status: paymentStatus, verifiedAt: paymentStatus === 'SUCCESS' ? new Date() : null },
         });
-
         await tx.order.update({
-          where: { id: payment.orderId },
+          where: { id: order.id },
           data: { paymentStatus, status: orderStatus },
         });
-      }
-    });
-
-    // If payment successful, notify admins (same as in bot handler)
-    if (paymentStatus === 'SUCCESS') {
-      const order = await prisma.order.findUnique({
-        where: { id: payment.orderId },
-        include: { user: true, product: true, plan: true },
       });
 
-      if (order && order.status === 'PAYMENT_VERIFIED') {
+      // If payment successful, notify admins
+      if (paymentStatus === 'SUCCESS') {
         const admins = await prisma.admin.findMany({
           where: { isSuperadmin: true, isActive: true, telegramId: { not: null } },
         });
