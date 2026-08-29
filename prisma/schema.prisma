@@ -1,4 +1,5 @@
-generator client {
+
+Generator client {
   provider = "prisma-client-js"
 }
 
@@ -18,22 +19,25 @@ model User {
 }
 
 model Product {
-  id          Int      @id @default(autoincrement())
-  name        String
-  description String?
-  isActive    Boolean  @default(true) @map("is_active")
-  sortOrder   Int      @default(0) @map("sort_order")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-  plans       Plan[]
-  orders      Order[]
+  id            Int      @id @default(autoincrement())
+  name          String
+  description   String?
+  panelProductId String? @map("panel_product_id") // 🔥 Panel API PID binding
+  isMaintenance Boolean  @default(false) @map("is_maintenance") // 🔥 Maintenance toggle
+  maintenanceReason String? @map("maintenance_reason")
+  isActive      Boolean  @default(true) @map("is_active")
+  sortOrder     Int      @default(0) @map("sort_order")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  plans         Plan[]
+  orders        Order[]
 }
 
 model Plan {
   id              Int      @id @default(autoincrement())
   productId       Int      @map("product_id")
   product         Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  durationLabel   String   @map("duration_label")
+  durationLabel   String   @map("duration_label") // e.g., '1 Day', '3 Hours'
   durationSeconds Int      @map("duration_seconds")
   price           Decimal  @db.Decimal(10, 2)
   isActive        Boolean  @default(true) @map("is_active")
@@ -45,8 +49,8 @@ model Plan {
 
 model Order {
   id             String   @id @default(uuid())
-  userId         BigInt   @map("user_id")                     // ✅ Int → BigInt
-  user           User     @relation(fields: [userId], references: [telegramId]) // ✅ reference telegramId
+  userId         BigInt   @map("user_id")
+  user           User     @relation(fields: [userId], references: [telegramId])
   productId      Int      @map("product_id")
   product        Product  @relation(fields: [productId], references: [id])
   planId         Int      @map("plan_id")
@@ -78,8 +82,14 @@ model Delivery {
   id          Int      @id @default(autoincrement())
   orderId     String   @unique @map("order_id")
   order       Order    @relation(fields: [orderId], references: [id])
-  keyContent  String   @map("key_content")
+  keyContent  String   @map("key_content") // Delivered License Key
   deliveredAt DateTime @default(now()) @map("delivered_at")
+}
+
+model SystemSetting {
+  key         String   @id // e.g., 'APK_DOWNLOAD_LINK', 'SUPPORT_CHANNEL_LINK'
+  value       String   // URL or config data
+  updatedAt   DateTime @updatedAt @map("updated_at")
 }
 
 model Admin {
