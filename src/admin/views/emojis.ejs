@@ -1,53 +1,99 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>FF STORE - Emoji Manager</title>
+  <meta charset="UTF-8">
+  <title>FF STORE - Custom Emoji Manager</title>
   <style>
-    body { font-family: Arial; background: #1a1a2e; color: white; padding: 20px; }
-    h1 { color: #e94560; }
-    table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-    th, td { border: 1px solid #333; padding: 10px; text-align: left; }
-    th { background: #16213e; color: #e94560; }
-    input, select { padding: 8px; margin: 5px; background: #0f3460; border: 1px solid #e94560; color: white; border-radius: 5px; }
-    button { padding: 8px 15px; background: #e94560; color: white; border: none; border-radius: 5px; cursor: pointer; }
-    a { color: #e94560; }
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #1a1a2e; color: #ffffff; padding: 20px; }
+    h1 { color: #e94560; margin-bottom: 5px; }
+    .back-btn { color: #e94560; text-decoration: none; font-weight: bold; display: inline-block; margin-bottom: 20px; }
+    .back-btn:hover { text-decoration: underline; }
+    
+    .alert { padding: 10px 15px; border-radius: 5px; margin-bottom: 15px; font-weight: bold; }
+    .alert-success { background: #0f5132; color: #d1e7dd; border: 1px solid #0f5132; }
+    .alert-error { background: #842029; color: #f8d7da; border: 1px solid #842029; }
+
+    .form-container { background: #16213e; padding: 20px; border-radius: 8px; border: 1px solid #0f3460; margin-bottom: 30px; }
+    input, select { padding: 10px; margin: 5px; background: #0f3460; border: 1px solid #e94560; color: white; border-radius: 5px; outline: none; }
+    input:focus, select:focus { border-color: #ff2e63; }
+    
+    button { padding: 10px 20px; background: #e94560; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; transition: 0.2s; }
+    button:hover { background: #ff2e63; }
+    .btn-delete { background: #dc3545; padding: 5px 10px; font-size: 12px; }
+    .btn-delete:hover { background: #bd2130; }
+
+    table { width: 100%; border-collapse: collapse; margin: 15px 0; background: #16213e; border-radius: 8px; overflow: hidden; }
+    th, td { border: 1px solid #0f3460; padding: 12px; text-align: left; }
+    th { background: #0f3460; color: #e94560; }
+    code { background: #0f3460; padding: 3px 6px; border-radius: 4px; color: #00fff5; }
   </style>
 </head>
 <body>
-  <h1>💎 Custom Emoji Manager</h1>
-  <a href="/admin/dashboard">← Back</a>
-  
-  <h2>Add New Emoji</h2>
-  <form method="POST" action="/admin/emojis">
-    <input name="emojiId" placeholder="Telegram Emoji ID" required>
-    <select name="categoryId">
-      <% categories.forEach(cat => { %>
-        <option value="<%= cat.id %>"><%= cat.label %></option>
-      <% }) %>
-    </select>
-    <input name="fallbackEmoji" placeholder="Fallback (👑)" required>
-    <input name="label" placeholder="Label">
-    <button>Add</button>
-  </form>
 
+  <h1>💎 Custom Emoji Manager</h1>
+  <a href="/admin/dashboard" class="back-btn">← Back to Dashboard</a>
+
+  <!-- Notifications Section -->
+  <% if (typeof error !== 'undefined' && error) { %>
+    <div class="alert alert-error"><%= error %></div>
+  <% } %>
+  <% if (typeof success !== 'undefined' && success) { %>
+    <div class="alert alert-success"><%= success %></div>
+  <% } %>
+
+  <!-- Add New Emoji Form -->
+  <div class="form-container">
+    <h2>➕ Add New Emoji</h2>
+    <form method="POST" action="/admin/emojis">
+      <input name="label" placeholder="Emoji Label (e.g., SHOP)" required style="text-transform: uppercase;">
+      <input name="emojiId" placeholder="Telegram Emoji ID" required>
+      <select name="categoryId" required>
+        <option value="" disabled selected>Select Category</option>
+        <% categories.forEach(cat => { %>
+          <option value="<%= cat.id %>"><%= cat.key %> (<%= cat.label %>)</option>
+        <% }) %>
+      </select>
+      <input name="fallbackEmoji" placeholder="Fallback Emoji (🛒)" required>
+      <button type="submit">Add Emoji</button>
+    </form>
+  </div>
+
+  <!-- Display Categories & Emojis -->
   <% categories.forEach(cat => { %>
-    <h3><%= cat.label %></h3>
+    <h3>📁 Category: <span style="color: #e94560;"><%= cat.key %></span> (<%= cat.label %>)</h3>
     <table>
-      <tr>
-        <th>Emoji ID</th>
-        <th>Fallback</th>
-        <th>Label</th>
-        <th>Status</th>
-      </tr>
-      <% cat.customEmojis.forEach(emoji => { %>
+      <thead>
         <tr>
-          <td><code><%= emoji.emojiId %></code></td>
-          <td><%= emoji.fallbackEmoji %></td>
-          <td><%= emoji.label || '-' %></td>
-          <td><%= emoji.isActive ? '✅' : '❌' %></td>
+          <th>Label</th>
+          <th>Emoji ID</th>
+          <th>Fallback</th>
+          <th>Status</th>
+          <th>Action</th>
         </tr>
-      <% }) %>
+      </thead>
+      <tbody>
+        <% if (cat.customEmojis && cat.customEmojis.length > 0) { %>
+          <% cat.customEmojis.forEach(emoji => { %>
+            <tr>
+              <td><b><%= emoji.label %></b></td>
+              <td><code><%= emoji.emojiId %></code></td>
+              <td style="font-size: 18px;"><%= emoji.fallbackEmoji %></td>
+              <td><%= emoji.isActive ? '✅ Active' : '❌ Inactive' %></td>
+              <td>
+                <form method="POST" action="/admin/emojis/delete/<%= emoji.id %>" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this emoji?');">
+                  <button type="submit" class="btn-delete">Delete</button>
+                </form>
+              </td>
+            </tr>
+          <% }) %>
+        <% } else { %>
+          <tr>
+            <td colspan="5" style="text-align: center; color: #888;">No emojis added in this category yet.</td>
+          </tr>
+        <% } %>
+      </tbody>
     </table>
   <% }) %>
+
 </body>
 </html>
