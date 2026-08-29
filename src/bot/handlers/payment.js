@@ -1,12 +1,11 @@
 const { Markup } = require('telegraf');
-const QRCode = require('qrcode');
 const prisma = require('../../services/db');
 const famgateway = require('../../services/famgateway');
 const logger = require('../../utils/logger');
 
 module.exports = (bot) => {
   bot.action(/^pay_(\d+)$/, async (ctx) => {
-    // ✅ सबसे पहले callback answer करो (कोई await नहीं)
+    // 1. Instant Callback Answer (Telegram UX Fast)
     ctx.answerCbQuery().catch(() => {});
 
     try {
@@ -18,6 +17,7 @@ module.exports = (bot) => {
 
       if (!plan) return ctx.reply('❌ Invalid plan.');
 
+      // 2. Database Order Creation
       const order = await prisma.order.create({
         data: {
           userId: BigInt(ctx.from.id),
@@ -27,6 +27,7 @@ module.exports = (bot) => {
         },
       });
 
+      // 3. FamGateway Integration
       const famResponse = await famgateway.createPayment({
         amount: Number(plan.price),
         orderId: order.id,
@@ -54,89 +55,33 @@ module.exports = (bot) => {
         },
       });
 
-      // ✅ Step 1: UPI link text message तुरंत भेजो
-      const textMsg = `💳 <b>PAYMENT CREATED</b>\n✦━━━━━━━━━━━━━━━━✦\n\n📦 Product: ${plan.product.name}\n⏱️ Plan: ${plan.durationLabel}\n💰 Amount: ₹${plan.price}\n🧾 Order ID: <code>${order.id.slice(0,8)}</code>\n\n🔗 <b>UPI Link:</b>\n<code>${famResponse.qr_text}</code>`;
+      // 4. Send Instant Payment Details Message
+      const textMsg = `💳 <b>PAYMENT CREATED</b>\n✦━━━━━━━━━━━━━━━━✦\n\n📦 Product: ${plan.product.name}\n⏱️ Plan: ${plan.durationLabel}\n💰 Amount: ₹${plan.price}\n🧾 Order ID: <code>${order.id.slice(0, 8)}</code>\n\n🔗 <b>UPI Link:</b>\n<code>${famResponse.qr_text}</code>`;
 
       const buttons = Markup.inlineKeyboard([
-        [Markup.button.url('🔗 Pay via Link', famResponse.payment_url || 'https://famgateway.in')],
+        [Markup.button.url('🔗 Pay via Link', famResponse.payment_url || famResponse.qr_text)],
         [Markup.button.callback('✅ I Have Paid', `paid_${order.id}`)],
         [Markup.button.callback('❌ Cancel Order', `cancel_${order.id}`)],
       ]);
 
       await ctx.replyWithHTML(textMsg, buttons);
 
-      // ✅ Step 2: QR भेजने से पहले 2 सेकंड delay (Telegram rate limit से बचें)
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // 5. Send QR Code Instantly (No Timeout Delays, Direct Remote URL or Fast Buffer)
+      const qrImageUrl = famResponse.qr_image || `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(famResponse.qr_text)}`;
+      
+      await ctx.replyWithPhoto(qrImageUrl, { caption: '👇 Scan this QR to pay' }).catch(async (err) => {
+        logger.warn('Direct QR URL failed, sending text link backup', err);
+      });
 
-      // QR भेजने की कोशिश (retry के साथ)
-      if (famResponse.qr_text) {
-        // Attempt 1: Photo 150px
-        try {
-          // User को बताओ कि QR आ रहा है
-          await ctx.replyWithChatAction('upload_photo').catch(() => {});
-          const qrBuffer = await QRCode.toBuffer(famResponse.qr_text, {
-            type: 'png',
-            width: 150,
-            margin: 1,
-            errorCorrectionLevel: 'M',
-          });
-          await ctx.replyWithPhoto(
-            { source: qrBuffer },
-            { caption: '👇 Scan this QR to pay' }
-          );
-          logger.info('QR photo sent (150px)');
-          return;
-        } catch (photoError1) {
-          logger.error('Photo attempt 1 failed:', JSON.stringify(photoError1));
-        }
-
-        // 3 सेकंड wait करके document try करो
-        await new Promise(resolve => setTimeout(resolve, 3000));
-
-        try {
-          const qrBuffer = await QRCode.toBuffer(famResponse.qr_text, {
-            type: 'png',
-            width: 150,
-            margin: 1,
-          });
-          await ctx.replyWithDocument(
-            { source: qrBuffer, filename: 'payment-qr.png' },
-            { caption: '👇 Scan this QR to pay' }
-          );
-          logger.info('QR document sent (150px)');
-          return;
-        } catch (docError) {
-          logger.error('Document send failed:', JSON.stringify(docError));
-        }
-
-        // 5 सेकंड wait करके फिर photo try करो (और छोटा 120px)
-        await new Promise(resolve => setTimeout(resolve, 5000));
-
-        try {
-          const qrBuffer = await QRCode.toBuffer(famResponse.qr_text, {
-            type: 'png',
-            width: 120,
-            margin: 1,
-          });
-          await ctx.replyWithPhoto(
-            { source: qrBuffer },
-            { caption: '👇 Scan this QR to pay' }
-          );
-          logger.info('QR photo sent (120px)');
-        } catch (photoError2) {
-          logger.error('Photo attempt 2 failed:', JSON.stringify(photoError2));
-          // UPI link पहले से भेज दिया गया है
-        }
-      }
     } catch (error) {
       logger.error('Payment creation error:', error);
       ctx.reply('❌ An error occurred. Please try again.').catch(() => {});
     }
   });
 
-  // ✅ I Have Paid – verification (कोई बदलाव नहीं)
+  // ✅ Verification Flow
   bot.action(/^paid_(.+)$/, async (ctx) => {
-    ctx.answerCbQuery('⏳ Checking...').catch(() => {});
+    ctx.answerCbQuery('⏳ Verification checking...').catch(() => {});
 
     try {
       const orderId = ctx.match[1];
@@ -146,47 +91,49 @@ module.exports = (bot) => {
       });
 
       if (!order || order.user.telegramId !== BigInt(ctx.from.id)) {
-        return ctx.answerCbQuery('❌ Order not found.').catch(() => {});
+        return ctx.reply('❌ Order not found or unauthorized.');
       }
 
       if (order.paymentStatus === 'SUCCESS') {
-        return ctx.answerCbQuery('✅ Payment already verified.').catch(() => {});
+        return ctx.reply('✅ Payment already verified.');
       }
 
-      if (order.status === 'CANCELLED' || order.status === 'EXPIRED') {
-        return ctx.answerCbQuery('❌ Order is no longer active.').catch(() => {});
+      if (['CANCELLED', 'EXPIRED'].includes(order.status)) {
+        return ctx.reply('❌ Order is no longer active.');
       }
 
       const verification = await famgateway.verifyPayment(order.payment.famgatewayOrderId);
 
       if (verification.status === 'SUCCESS') {
-        await prisma.$transaction(async (tx) => {
-          await tx.payment.update({
+        await prisma.$transaction([
+          prisma.payment.update({
             where: { orderId: orderId },
             data: { status: 'SUCCESS', verifiedAt: new Date() },
-          });
-          await tx.order.update({
+          }),
+          prisma.order.update({
             where: { id: orderId },
             data: { paymentStatus: 'SUCCESS', status: 'PAYMENT_VERIFIED' },
-          });
-        });
+          }),
+        ]);
 
+        // Notify Admins
         const admins = await prisma.admin.findMany({
           where: { isSuperadmin: true, isActive: true, telegramId: { not: null } },
         });
 
+        const adminMsg = `🔔 <b>NEW PAID ORDER</b>\n\n👤 User: ${order.user.firstName}\n📦 Product: ${order.product.name}\n⏱️ Plan: ${order.plan.durationLabel}\n💰 Amount: ₹${order.amount}\n🧾 Order ID: <code>${order.id.slice(0, 8)}</code>`;
+        const adminButtons = Markup.inlineKeyboard([
+          [Markup.button.callback('✅ Approve', `approve_${order.id}`), Markup.button.callback('❌ Reject', `reject_${order.id}`)],
+        ]);
+
         for (const admin of admins) {
-          const adminMsg = `🔔 <b>NEW PAID ORDER</b>\n\n👤 User: ${order.user.firstName}\n📦 Product: ${order.product.name}\n⏱️ Plan: ${order.plan.durationLabel}\n💰 Amount: ₹${order.amount}\n🧾 Order ID: <code>${order.id.slice(0,8)}</code>\n\nApprove or reject:`;
-          const adminButtons = Markup.inlineKeyboard([
-            [Markup.button.callback('✅ Approve', `approve_${order.id}`), Markup.button.callback('❌ Reject', `reject_${order.id}`)],
-          ]);
           await bot.telegram.sendMessage(admin.telegramId.toString(), adminMsg, {
             parse_mode: 'HTML',
             ...adminButtons,
           }).catch((err) => logger.error('Admin notify error:', err));
         }
 
-        await ctx.reply('✅ Payment received successfully!\n👨‍💼 Your order has been sent to admin for approval.');
+        await ctx.reply('✅ Payment received successfully!\n👨‍💼 Sent to admin for approval.');
       } else if (verification.status === 'PENDING') {
         await ctx.reply('⏳ Payment is still pending. Please wait.');
       } else {
@@ -194,7 +141,7 @@ module.exports = (bot) => {
           where: { id: orderId },
           data: { status: 'EXPIRED', paymentStatus: 'FAILED' },
         });
-        await ctx.reply('❌ Payment was not detected. Please create a new order.');
+        await ctx.reply('❌ Payment was not detected. Please try again.');
       }
     } catch (error) {
       logger.error('Payment verification error:', error);
@@ -202,7 +149,7 @@ module.exports = (bot) => {
     }
   });
 
-  // ❌ Cancel order
+  // ❌ Order Cancellation
   bot.action(/^cancel_(.+)$/, async (ctx) => {
     ctx.answerCbQuery().catch(() => {});
     try {
@@ -210,10 +157,10 @@ module.exports = (bot) => {
       const order = await prisma.order.findUnique({ where: { id: orderId } });
 
       if (!order || order.userId !== BigInt(ctx.from.id)) {
-        return ctx.answerCbQuery('❌ Order not found.').catch(() => {});
+        return ctx.reply('❌ Order not found.');
       }
       if (order.paymentStatus === 'SUCCESS') {
-        return ctx.answerCbQuery('❌ Cannot cancel paid order.').catch(() => {});
+        return ctx.reply('❌ Cannot cancel paid order.');
       }
 
       await prisma.order.update({
