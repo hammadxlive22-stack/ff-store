@@ -5,9 +5,14 @@ let emojiCache = new Map();
 let cacheTimestamp = null;
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
+// UTF-16 Length Helper (Telegram API Spec)
+function getUtf16Length(str) {
+  return Array.from(str).reduce((acc, char) => acc + (char.codePointAt(0) > 0xFFFF ? 2 : 1), 0);
+}
+
 async function getEmojiMap() {
   try {
-    if (cacheTimestamp && Date.now() - cacheTimestamp < CACHE_DURATION) {
+    if (cacheTimestamp && Date.now() - cacheTimestamp < CACHE_DURATION && emojiCache.size > 0) {
       return Object.fromEntries(emojiCache);
     }
 
@@ -16,14 +21,18 @@ async function getEmojiMap() {
       include: { category: true },
     });
 
-    const emojiMap = {};
+    const emojiMap = getDefaultEmojiMap();
+
+    // DB Emojis ko override karo (No Data Loss)
     for (const emoji of emojis) {
-      emojiMap[emoji.category.key] = {
-        customEmojiId: emoji.emojiId,
-        fallbackEmoji: emoji.fallbackEmoji,
-        category: emoji.category.key,
-        label: emoji.label,
-      };
+      if (emoji.category && emoji.category.key) {
+        emojiMap[emoji.category.key.toUpperCase()] = {
+          customEmojiId: emoji.emojiId,
+          fallbackEmoji: emoji.fallbackEmoji || emojiMap[emoji.category.key.toUpperCase()]?.fallbackEmoji || '✨',
+          category: emoji.category.key,
+          label: emoji.label,
+        };
+      }
     }
 
     emojiCache = new Map(Object.entries(emojiMap));
@@ -57,35 +66,23 @@ function getDefaultEmojiMap() {
   };
 }
 
-async function formatWithCustomEmoji(text, emojiMap = null) {
-  if (!emojiMap) {
-    emojiMap = await getEmojiMap();
+/**
+ * HTML Mode Helper (Fastest & Easiest Approach)
+ */
+async function formatToHTML(text, emojiMap = null) {
+  if (!emojiMap) emojiMap = await getEmojiMap();
+
+  let formattedText = text;
+
+  for (const [_, config] of Object.entries(emojiMap)) {
+    if (!config.customEmojiId || !config.fallbackEmoji) continue;
+
+    const customTag = `<tg-emoji custom-emoji-id="${config.customEmojiId}">${config.fallbackEmoji}</tg-emoji>`;
+    // Global replace for fallback emojis
+    formattedText = formattedText.split(config.fallbackEmoji).join(customTag);
   }
 
-  const entities = [];
-
-  for (const [category, config] of Object.entries(emojiMap)) {
-    if (!config.customEmojiId) continue;
-
-    const fallbackEmoji = config.fallbackEmoji;
-    let searchIndex = 0;
-
-    while (true) {
-      const index = text.indexOf(fallbackEmoji, searchIndex);
-      if (index === -1) break;
-
-      entities.push({
-        type: 'custom_emoji',
-        offset: index,
-        length: fallbackEmoji.length,
-        custom_emoji_id: config.customEmojiId,
-      });
-
-      searchIndex = index + fallbackEmoji.length;
-    }
-  }
-
-  return { text, entities };
+  return formattedText;
 }
 
 function clearEmojiCache() {
@@ -97,6 +94,6 @@ function clearEmojiCache() {
 module.exports = {
   getEmojiMap,
   getDefaultEmojiMap,
-  formatWithCustomEmoji,
+  formatToHTML,
   clearEmojiCache,
 };
