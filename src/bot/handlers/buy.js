@@ -1,3 +1,4 @@
+
 const { Markup } = require('telegraf');
 const prisma = require('../../services/db');
 const logger = require('../../utils/logger');
@@ -106,16 +107,16 @@ module.exports = (bot) => {
 
       if (!plan) return ctx.reply('❌ Selected plan is no longer available.');
 
-      // 3. Create Local DB Pending Order
+      // 3. Create Local DB Pending Order (FIXED: Relational Connect Syntax)
       const internalOrderId = `ORD_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
       
       const dbOrder = await prisma.order.create({
         data: {
           orderId: internalOrderId,
-          userId: user.id,
-          planId: plan.id,
           amount: plan.price,
           status: 'PENDING',
+          user: { connect: { id: user.id } },   // ✅ Fixed Prisma relation
+          plan: { connect: { id: plan.id } },   // ✅ Fixed Prisma relation
         },
       });
 
