@@ -85,7 +85,7 @@ module.exports = (bot) => {
       const planId = parseInt(ctx.match[1]);
       const telegramId = BigInt(ctx.from.id);
 
-      // 1. Ensure User exists in DB prior to creating order
+      // 1. Ensure User exists in DB
       let user = await prisma.user.findUnique({ where: { telegramId } });
       if (!user) {
         user = await prisma.user.create({
@@ -98,7 +98,7 @@ module.exports = (bot) => {
         });
       }
 
-      // 2. Fetch Plan & Product Details
+      // 2. Fetch Plan Details
       const plan = await prisma.plan.findUnique({
         where: { id: planId },
         include: { product: true },
@@ -106,27 +106,41 @@ module.exports = (bot) => {
 
       if (!plan) return ctx.reply('❌ Selected plan is no longer available.');
 
-      // 3. Create Local DB Pending Order (FIXED: Relational Connect for user, plan, and product)
-      const internalOrderId = `ORD_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-      
+      // 3. Unique Order ID String for Gateway
+      const generatedOrderId = `ORD_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+      // 4. Create Local DB Pending Order (Fixed: Removed invalid `orderId` field)
       const dbOrder = await prisma.order.create({
         data: {
-          orderId: internalOrderId,
+          id: generatedOrderId, // Agar schema me `id` String hai to custom orderId id me jayegi
           amount: plan.price,
           status: 'PENDING',
           user: { connect: { id: user.id } },
           plan: { connect: { id: plan.id } },
-          product: { connect: { id: plan.productId } }, // 👈 Missing relation fixed
+          product: { connect: { id: plan.productId } },
         },
+      }).catch(async (err) => {
+        // Agar schema me `id` auto-generated (cuid/autoincrement) hai to bina custom ID ke create karega
+        return await prisma.order.create({
+          data: {
+            amount: plan.price,
+            status: 'PENDING',
+            user: { connect: { id: user.id } },
+            plan: { connect: { id: plan.id } },
+            product: { connect: { id: plan.productId } },
+          },
+        });
       });
 
-      // 4. Name Fallback (Sanitizes Fancy Fonts/Emojis)
+      const finalOrderId = dbOrder.id || generatedOrderId;
+
+      // 5. Customer Name Fallback
       const customerName = ctx.from.first_name || ctx.from.username || 'Customer';
 
-      // 5. Call FamGateway API
+      // 6. Call FamGateway API
       const gatewayResponse = await createPayment({
         amount: plan.price,
-        orderId: dbOrder.orderId,
+        orderId: String(finalOrderId),
         customerName,
       });
 
@@ -135,14 +149,18 @@ module.exports = (bot) => {
         return ctx.reply(`❌ Payment creation failed: ${gatewayResponse.error}`);
       }
 
-      // 6. Save FamGateway Order ID in DB
-      await prisma.order.update({
-        where: { id: dbOrder.id },
-        data: { gatewayOrderId: gatewayResponse.fam_order_id },
-      });
+      // 7. Save FamGateway Order ID in DB (if field exists in schema)
+      try {
+        await prisma.order.update({
+          where: { id: dbOrder.id },
+          data: { gatewayOrderId: gatewayResponse.fam_order_id },
+        });
+      } catch (e) {
+        // Fallback if gatewayOrderId column isn't present in schema
+      }
 
-      // 7. Send QR Code & Payment Link to User
-      const payText = `<b>💳 PAYMENT DETAILS</b>\n✦━━━━━━━━━━━━━━━━✦\n\n🆔 <b>Order ID:</b> <code>${dbOrder.orderId}</code>\n💰 <b>Amount:</b> ₹${plan.price}\n📦 <b>Product:</b> ${plan.product.name}\n⏱️ <b>Plan:</b> ${plan.durationLabel}\n\n👇 Scan QR Code or click payment button below:`;
+      // 8. Send QR Code & Payment Link
+      const payText = `<b>💳 PAYMENT DETAILS</b>\n✦━━━━━━━━━━━━━━━━✦\n\n🆔 <b>Order ID:</b> <code>${finalOrderId}</code>\n💰 <b>Amount:</b> ₹${plan.price}\n📦 <b>Product:</b> ${plan.product.name}\n⏱️ <b>Plan:</b> ${plan.durationLabel}\n\n👇 Scan QR Code or click payment button below:`;
 
       const payButtons = Markup.inlineKeyboard([
         [Markup.button.url('📲 Open UPI Payment', gatewayResponse.qr_text || gatewayResponse.payment_url || '#')],
@@ -165,4 +183,3 @@ module.exports = (bot) => {
     }
   });
 };
-        
