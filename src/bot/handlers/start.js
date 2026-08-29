@@ -23,9 +23,6 @@ module.exports = (bot) => {
 
       const welcomeText = `👑 <b>FF STORE</b>\n✦━━━━━━━━━━━━━━━━✦\n\n⚡ Welcome to FF STORE\n🛒 Buy authorized digital products\n💳 Secure UPI payments\n⚡ Fast payment verification\n👨‍💼 Admin-approved delivery`;
 
-      // Custom Dynamic Emojis Injection
-      const formattedHTML = await formatToHTML(welcomeText);
-
       const menu = Markup.inlineKeyboard([
         [Markup.button.callback('🛒 Buy Now', 'buy_now')],
         [Markup.button.callback('💰 Add Balance', 'add_balance'), Markup.button.callback('👤 My Profile', 'my_profile')],
@@ -33,21 +30,20 @@ module.exports = (bot) => {
         [Markup.button.callback('🧾 Payment History', 'payment_history'), Markup.button.callback('🆘 Support', 'support')],
       ]);
 
-      // Direct clean HTML reply without entities crash
-      await ctx.replyWithHTML(formattedHTML, menu);
+      // Step 1: Try with Custom Animated Emojis
+      try {
+        const customHtml = await formatToHTML(welcomeText, true);
+        await ctx.replyWithHTML(customHtml, menu);
+      } catch (telegramError) {
+        // Step 2: Fallback if IDs are invalid on Telegram's side
+        logger.warn('Custom Emoji failed, falling back to standard HTML:', telegramError.message);
+        const plainHtml = await formatToHTML(welcomeText, false);
+        await ctx.replyWithHTML(plainHtml, menu);
+      }
 
     } catch (error) {
       logger.error('Start handler error:', error);
       await ctx.reply('❌ An error occurred.');
     }
-  });
-
-  bot.action('add_balance', async (ctx) => {
-    await ctx.answerCbQuery('💰 Coming soon!');
-  });
-
-  bot.action('support', async (ctx) => {
-    await ctx.answerCbQuery();
-    await ctx.reply('🆘 Contact: @ff_store_support');
   });
 };
