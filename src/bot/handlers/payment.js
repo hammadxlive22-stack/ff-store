@@ -3,9 +3,16 @@ const prisma = require('../../services/db');
 const famgateway = require('../../services/famgateway');
 const logger = require('../../utils/logger');
 
+// Helper: Sanitize customer name to prevent FamGateway SQL 500 crash
+function sanitizeName(name) {
+  if (!name) return 'Customer';
+  const clean = String(name).replace(/[^\w\s]/gi, '').trim();
+  return clean.length > 0 ? clean : 'Customer';
+}
+
 module.exports = (bot) => {
   bot.action(/^pay_(\d+)$/, async (ctx) => {
-    // 1. Instant Callback Answer (Telegram UX Fast)
+    // 1. Instant Callback Answer
     ctx.answerCbQuery().catch(() => {});
 
     try {
@@ -27,11 +34,17 @@ module.exports = (bot) => {
         },
       });
 
-      // 3. FamGateway Integration
+      // Safe clean name for Gateway API
+      const safeCustomerName = sanitizeName(ctx.from.first_name);
+
+      // Unique short order ID string safe for FamGateway DB
+      const gatewayOrderId = `ORD_${order.id.replace(/-/g, '').slice(0, 12)}_${Date.now().toString().slice(-4)}`;
+
+      // 3. FamGateway Integration Call
       const famResponse = await famgateway.createPayment({
         amount: Number(plan.price),
-        orderId: order.id,
-        customerName: ctx.from.first_name || 'Customer',
+        orderId: gatewayOrderId,
+        customerName: safeCustomerName,
       });
 
       if (!famResponse.success) {
@@ -39,7 +52,7 @@ module.exports = (bot) => {
           where: { id: order.id },
           data: { status: 'FAILED', paymentStatus: 'FAILED' },
         });
-        return ctx.reply('❌ Payment creation failed.');
+        return ctx.reply(`❌ Payment creation failed: ${famResponse.error || 'Gateway Error'}`);
       }
 
       await prisma.payment.create({
@@ -55,8 +68,8 @@ module.exports = (bot) => {
         },
       });
 
-      // 4. Send Instant Payment Details Message
-      const textMsg = `💳 <b>PAYMENT CREATED</b>\n✦━━━━━━━━━━━━━━━━✦\n\n📦 Product: ${plan.product.name}\n⏱️ Plan: ${plan.durationLabel}\n💰 Amount: ₹${plan.price}\n🧾 Order ID: <code>${order.id.slice(0, 8)}</code>\n\n🔗 <b>UPI Link:</b>\n<code>${famResponse.qr_text}</code>`;
+      // 4. Send Payment Details Message
+      const textMsg = `💳 <b>PAYMENT CREATED</b>\n✦━━━━━━━━━━━━━━━━✦\n\n📦 <b>Product:</b> ${plan.product.name}\n⏱️ <b>Plan:</b> ${plan.durationLabel}\n💰 <b>Amount:</b> ₹${plan.price}\n🧾 <b>Order ID:</b> <code>${order.id.slice(0, 8)}</code>\n\n🔗 <b>UPI Link:</b>\n<code>${famResponse.qr_text}</code>`;
 
       const buttons = Markup.inlineKeyboard([
         [Markup.button.url('🔗 Pay via Link', famResponse.payment_url || famResponse.qr_text)],
@@ -66,7 +79,7 @@ module.exports = (bot) => {
 
       await ctx.replyWithHTML(textMsg, buttons);
 
-      // 5. Send QR Code Instantly (No Timeout Delays, Direct Remote URL or Fast Buffer)
+      // 5. Send QR Code Instantly
       const qrImageUrl = famResponse.qr_image || `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(famResponse.qr_text)}`;
       
       await ctx.replyWithPhoto(qrImageUrl, { caption: '👇 Scan this QR to pay' }).catch(async (err) => {
@@ -100,6 +113,10 @@ module.exports = (bot) => {
 
       if (['CANCELLED', 'EXPIRED'].includes(order.status)) {
         return ctx.reply('❌ Order is no longer active.');
+      }
+
+      if (!order.payment || !order.payment.famgatewayOrderId) {
+        return ctx.reply('❌ Payment session info missing. Please recreate order.');
       }
 
       const verification = await famgateway.verifyPayment(order.payment.famgatewayOrderId);
