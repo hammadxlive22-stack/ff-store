@@ -18,6 +18,11 @@ module.exports = (bot) => {
 
       if (!plan) return ctx.reply('❌ Invalid plan.');
 
+      // Check if product is under maintenance
+      if (plan.product.isMaintenance) {
+        return ctx.reply(`⚠️ Sorry! Product "<b>${plan.product.name}</b>" is currently under maintenance. Please check back later.`, { parse_mode: 'HTML' });
+      }
+
       // 2. Database Order Creation
       const order = await prisma.order.create({
         data: {
@@ -103,6 +108,11 @@ module.exports = (bot) => {
         return ctx.reply('❌ Order is no longer active.');
       }
 
+      // Check maintenance status again
+      if (order.product.isMaintenance) {
+        return ctx.reply(`⚠️ Product "<b>${order.product.name}</b>" is under maintenance. Your payment is safe, contact admin.`, { parse_mode: 'HTML' });
+      }
+
       const verification = await famgateway.verifyPayment(order.payment.famgatewayOrderId);
 
       if (verification.status === 'SUCCESS') {
@@ -114,7 +124,7 @@ module.exports = (bot) => {
           }),
           prisma.order.update({
             where: { id: orderId },
-            data: { paymentStatus: 'SUCCESS', status: 'COMPLETED' },
+            data: { paymentStatus: 'SUCCESS', status: 'COMPLETED', deliveryStatus: 'DELIVERED' },
           }),
         ]);
 
@@ -147,13 +157,28 @@ module.exports = (bot) => {
           licenseKeyText = '⚠️ Key generation error. Contact admin with your Order ID.';
         }
 
-        // Send success message along with the generated license key to the user
+        // 💾 Save Delivery Record in DB so it shows up in Live Logs & User Search
+        await prisma.delivery.create({
+          data: {
+            orderId: order.id,
+            keyContent: licenseKeyText,
+          },
+        }).catch((err) => logger.error('Delivery record save error:', err));
+
+        // Fetch dynamic support channel link if set by admin
+        const supportChannelSetting = await prisma.systemSetting.findUnique({ where: { key: 'SUPPORT_CHANNEL_LINK' } });
+        let channelPrompt = '';
+        if (supportChannelSetting && supportChannelSetting.value) {
+          channelPrompt = `\n📢 Join Official Channel: ${supportChannelSetting.value}\n`;
+        }
+
+        // Send success message along with the generated license key and optional channel link to the user
         await ctx.reply(
           `✅ <b>Payment Verified Successfully!</b>\n\n` +
           `📦 Product: ${order.product.name}\n` +
           `⏱️ Plan: ${order.plan.durationLabel}\n` +
           `🧾 Order ID: <code>${order.id.slice(0, 8)}</code>\n\n` +
-          `🔑 <b>Your License Key:</b>\n<code>${licenseKeyText}</code>`,
+          `🔑 <b>Your License Key:</b>\n<code>${licenseKeyText}</code>${channelPrompt}`,
           { parse_mode: 'HTML' }
         );
 
