@@ -1,6 +1,6 @@
 const { Markup } = require('telegraf');
 const prisma = require('../../services/db');
-const { formatWithCustomEmoji } = require('../../services/emojiService');
+const { formatToHTML } = require('../../services/emojiService');
 const logger = require('../../utils/logger');
 
 module.exports = (bot) => {
@@ -21,9 +21,10 @@ module.exports = (bot) => {
         },
       });
 
-      const welcomeText = `👑 FF STORE\n✦━━━━━━━━━━━━━━━━✦\n\n⚡ Welcome to FF STORE\n🛒 Buy authorized digital products\n💳 Secure UPI payments\n⚡ Fast payment verification\n👨‍💼 Admin-approved delivery`;
+      const welcomeText = `👑 <b>FF STORE</b>\n✦━━━━━━━━━━━━━━━━✦\n\n⚡ Welcome to FF STORE\n🛒 Buy authorized digital products\n💳 Secure UPI payments\n⚡ Fast payment verification\n👨‍💼 Admin-approved delivery`;
 
-      const { text, entities } = await formatWithCustomEmoji(welcomeText);
+      // Custom Dynamic Emojis Injection
+      const formattedHTML = await formatToHTML(welcomeText);
 
       const menu = Markup.inlineKeyboard([
         [Markup.button.callback('🛒 Buy Now', 'buy_now')],
@@ -32,10 +33,9 @@ module.exports = (bot) => {
         [Markup.button.callback('🧾 Payment History', 'payment_history'), Markup.button.callback('🆘 Support', 'support')],
       ]);
 
-      await ctx.replyWithHTML(text, {
-        ...menu,
-        entities: entities.length > 0 ? entities : undefined,
-      });
+      // Direct clean HTML reply without entities crash
+      await ctx.replyWithHTML(formattedHTML, menu);
+
     } catch (error) {
       logger.error('Start handler error:', error);
       await ctx.reply('❌ An error occurred.');
