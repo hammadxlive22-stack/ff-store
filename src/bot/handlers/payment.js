@@ -55,8 +55,8 @@ module.exports = (bot) => {
         },
       });
 
-      // 4. Send Instant Payment Details Message
-      const textMsg = `💳 <b>PAYMENT CREATED</b>\n✦━━━━━━━━━━━━━━━━✦\n\n📦 Product: ${plan.product.name}\n⏱️ Plan: ${plan.durationLabel}\n💰 Amount: ₹${plan.price}\n🧾 Order ID: <code>${order.id.slice(0, 8)}</code>\n\n🔗 <b>UPI Link:</b>\n<code>${famResponse.qr_text}</code>`;
+      // 4. Combined Payment Details + QR Code Message
+      const textMsg = `💳 <b>PAYMENT CREATED</b>\n✦━━━━━━━━━━━━━━━━✦\n\n📦 Product: ${plan.product.name}\n⏱️ Plan: ${plan.durationLabel}\n💰 Amount: ₹${plan.price}\n🧾 Order ID: <code>${order.id.slice(0, 8)}</code>\n\n🔗 <b>UPI Link:</b>\n<code>${famResponse.qr_text}</code>\n\n👇 Scan this QR or use buttons below to pay:`;
 
       const buttons = Markup.inlineKeyboard([
         [Markup.button.url('🔗 Pay via Link', famResponse.payment_url || famResponse.qr_text)],
@@ -64,13 +64,13 @@ module.exports = (bot) => {
         [Markup.button.callback('❌ Cancel Order', `cancel_${order.id}`)],
       ]);
 
-      await ctx.replyWithHTML(textMsg, buttons);
-
-      // 5. Send QR Code Instantly (No Timeout Delays, Direct Remote URL or Fast Buffer)
       const qrImageUrl = famResponse.qr_image || `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(famResponse.qr_text)}`;
-      
-      await ctx.replyWithPhoto(qrImageUrl, { caption: '👇 Scan this QR to pay' }).catch(async (err) => {
-        logger.warn('Direct QR URL failed, sending text link backup', err);
+
+      // Send photo and text together in a single message with caption and buttons
+      await ctx.replyWithPhoto(qrImageUrl, {
+        caption: textMsg,
+        parse_mode: 'HTML',
+        ...buttons,
       });
 
     } catch (error) {
