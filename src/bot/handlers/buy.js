@@ -1,8 +1,8 @@
-
 const { Markup } = require('telegraf');
+const QRCode = require('qrcode');
 const prisma = require('../../services/db');
 const logger = require('../../utils/logger');
-const { createPayment } = require('../../services/famgateway'); // FamGateway Service
+const { createPayment, verifyPayment } = require('../../services/famgateway');
 
 module.exports = (bot) => {
   bot.action('buy_now', async (ctx) => {
@@ -78,6 +78,7 @@ module.exports = (bot) => {
     }
   });
 
+  // ✅ HANDLER: Pay Action
   bot.action(/^pay_(\d+)$/, async (ctx) => {
     ctx.answerCbQuery('⌛ Creating payment QR...').catch(() => {});
 
@@ -85,7 +86,6 @@ module.exports = (bot) => {
       const planId = parseInt(ctx.match[1]);
       const telegramId = BigInt(ctx.from.id);
 
-      // 1. Ensure User exists in DB
       let user = await prisma.user.findUnique({ where: { telegramId } });
       if (!user) {
         user = await prisma.user.create({
@@ -98,7 +98,6 @@ module.exports = (bot) => {
         });
       }
 
-      // 2. Fetch Plan Details
       const plan = await prisma.plan.findUnique({
         where: { id: planId },
         include: { product: true },
@@ -106,10 +105,8 @@ module.exports = (bot) => {
 
       if (!plan) return ctx.reply('❌ Selected plan is no longer available.');
 
-      // 3. Unique Order ID String
       const generatedOrderId = `ORD_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
 
-      // 4. Create Local DB Pending Order
       let dbOrder;
       try {
         dbOrder = await prisma.order.create({
@@ -137,7 +134,6 @@ module.exports = (bot) => {
       const finalOrderId = dbOrder.id || generatedOrderId;
       const customerName = ctx.from.first_name || ctx.from.username || 'Customer';
 
-      // 5. Call FamGateway API
       const gatewayResponse = await createPayment({
         amount: plan.price,
         orderId: String(finalOrderId),
@@ -149,7 +145,6 @@ module.exports = (bot) => {
         return ctx.reply(`❌ Payment creation failed: ${gatewayResponse.error}`);
       }
 
-      // 6. Save Gateway Order ID
       try {
         await prisma.order.update({
           where: { id: dbOrder.id },
@@ -157,8 +152,18 @@ module.exports = (bot) => {
         });
       } catch (e) {}
 
-      // 7. HTTPS URL Fix for Telegram Button
       const checkoutUrl = gatewayResponse.checkout_url || gatewayResponse.payment_url || `https://famgateway.in/pay.php?order_id=${gatewayResponse.fam_order_id}`;
+      const upiIntentUrl = gatewayResponse.upi_intent || gatewayResponse.qr_text;
+
+      // 🎯 High-Quality QR Buffer Generation (Fixes "Unable to scan QR" in PhonePe)
+      let qrBuffer = null;
+      if (upiIntentUrl) {
+        qrBuffer = await QRCode.toBuffer(upiIntentUrl, {
+          errorCorrectionLevel: 'H',
+          margin: 2,
+          width: 500,
+        });
+      }
 
       const payText = `<b>💳 PAYMENT DETAILS</b>\n✦━━━━━━━━━━━━━━━━✦\n\n🆔 <b>Order ID:</b> <code>${finalOrderId}</code>\n💰 <b>Amount:</b> ₹${plan.price}\n📦 <b>Product:</b> ${plan.product.name}\n⏱️ <b>Plan:</b> ${plan.durationLabel}\n\n👇 Scan QR Code or click payment button below:`;
 
@@ -167,8 +172,8 @@ module.exports = (bot) => {
         [Markup.button.callback('🔄 Verify Payment', `verify_${dbOrder.id}`)],
       ]);
 
-      if (gatewayResponse.qr_image) {
-        await ctx.replyWithPhoto(gatewayResponse.qr_image, {
+      if (qrBuffer) {
+        await ctx.replyWithPhoto({ source: qrBuffer }, {
           caption: payText,
           parse_mode: 'HTML',
           ...payButtons,
@@ -180,6 +185,45 @@ module.exports = (bot) => {
     } catch (error) {
       logger.error('Pay handler error:', error);
       ctx.reply('❌ Failed to process payment. Please try again.').catch(() => {});
+    }
+  });
+
+  // 🔄 VERIFY PAYMENT ACTION (Shows alert if pending)
+  bot.action(/^verify_(.+)$/, async (ctx) => {
+    try {
+      const orderIdParam = ctx.match[1];
+      
+      const order = await prisma.order.findUnique({
+        where: { id: isNaN(Number(orderIdParam)) ? orderIdParam : Number(orderIdParam) },
+      });
+
+      if (!order) {
+        return ctx.answerCbQuery('❌ Order not found!', { show_alert: true });
+      }
+
+      if (order.status === 'COMPLETED' || order.status === 'SUCCESS') {
+        return ctx.answerCbQuery('✅ Payment already received & verified!', { show_alert: true });
+      }
+
+      // Check payment status with FamGateway API
+      const statusResponse = await verifyPayment(order.gatewayOrderId || order.id);
+
+      if (statusResponse && (statusResponse.status === 'SUCCESS' || statusResponse.status === 'COMPLETED')) {
+        await prisma.order.update({
+          where: { id: order.id },
+          data: { status: 'COMPLETED' },
+        });
+
+        await ctx.answerCbQuery('🎉 Payment Successful!', { show_alert: true });
+        return ctx.reply(`✅ <b>Payment Received!</b>\n\nOrder ID: <code>${order.id}</code>\nYour license / key will be delivered shortly.`, { parse_mode: 'HTML' });
+      } else {
+        // 🚨 PENDING RESPONSE ALERT
+        return ctx.answerCbQuery('⏳ PAYMENT IS STILL PENDING!\n\nPlease complete the payment in your UPI app and try again.', { show_alert: true });
+      }
+
+    } catch (error) {
+      logger.error('Verify handler error:', error);
+      ctx.answerCbQuery('⚠️ Could not verify payment right now. Try again later.', { show_alert: true }).catch(() => {});
     }
   });
 };
