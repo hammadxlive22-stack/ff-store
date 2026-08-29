@@ -5,9 +5,11 @@ let emojiCache = new Map();
 let cacheTimestamp = null;
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
-// UTF-16 Length Helper (Telegram API Spec)
-function getUtf16Length(str) {
-  return Array.from(str).reduce((acc, char) => acc + (char.codePointAt(0) > 0xFFFF ? 2 : 1), 0);
+// Valid custom_emoji_id is typically a numeric string (18-19 digits)
+function isValidCustomEmojiId(id) {
+  if (!id) return false;
+  const strId = String(id).trim();
+  return /^\d{15,20}$/.test(strId);
 }
 
 async function getEmojiMap() {
@@ -23,12 +25,12 @@ async function getEmojiMap() {
 
     const emojiMap = getDefaultEmojiMap();
 
-    // DB Emojis ko override karo (No Data Loss)
     for (const emoji of emojis) {
       if (emoji.category && emoji.category.key) {
-        emojiMap[emoji.category.key.toUpperCase()] = {
-          customEmojiId: emoji.emojiId,
-          fallbackEmoji: emoji.fallbackEmoji || emojiMap[emoji.category.key.toUpperCase()]?.fallbackEmoji || '✨',
+        const key = emoji.category.key.toUpperCase();
+        emojiMap[key] = {
+          customEmojiId: isValidCustomEmojiId(emoji.emojiId) ? String(emoji.emojiId).trim() : null,
+          fallbackEmoji: emoji.fallbackEmoji || emojiMap[key]?.fallbackEmoji || '✨',
           category: emoji.category.key,
           label: emoji.label,
         };
@@ -66,20 +68,23 @@ function getDefaultEmojiMap() {
   };
 }
 
-/**
- * HTML Mode Helper (Fastest & Easiest Approach)
- */
 async function formatToHTML(text, emojiMap = null) {
   if (!emojiMap) emojiMap = await getEmojiMap();
 
   let formattedText = text;
 
   for (const [_, config] of Object.entries(emojiMap)) {
-    if (!config.customEmojiId || !config.fallbackEmoji) continue;
+    const rawId = config.customEmojiId;
+    const fallback = config.fallbackEmoji;
 
-    const customTag = `<tg-emoji custom-emoji-id="${config.customEmojiId}">${config.fallbackEmoji}</tg-emoji>`;
-    // Global replace for fallback emojis
-    formattedText = formattedText.split(config.fallbackEmoji).join(customTag);
+    if (!fallback) continue;
+
+    // Direct check: agar ID valid standard integer string hai tabhi tag banao
+    if (isValidCustomEmojiId(rawId)) {
+      const cleanId = String(rawId).trim();
+      const customTag = `<tg-emoji custom-emoji-id="${cleanId}">${fallback}</tg-emoji>`;
+      formattedText = formattedText.split(fallback).join(customTag);
+    }
   }
 
   return formattedText;
