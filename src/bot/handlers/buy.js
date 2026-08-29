@@ -1,3 +1,4 @@
+
 const { Markup } = require('telegraf');
 const prisma = require('../../services/db');
 const logger = require('../../utils/logger');
@@ -77,7 +78,6 @@ module.exports = (bot) => {
     }
   });
 
-  // ✅ HANDLER: Pay Action Logic to create Order and call FamGateway
   bot.action(/^pay_(\d+)$/, async (ctx) => {
     ctx.answerCbQuery('⌛ Creating payment QR...').catch(() => {});
 
@@ -106,22 +106,24 @@ module.exports = (bot) => {
 
       if (!plan) return ctx.reply('❌ Selected plan is no longer available.');
 
-      // 3. Unique Order ID String for Gateway
+      // 3. Unique Order ID String
       const generatedOrderId = `ORD_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
 
-      // 4. Create Local DB Pending Order (Fixed: Removed invalid `orderId` field)
-      const dbOrder = await prisma.order.create({
-        data: {
-          id: generatedOrderId, // Agar schema me `id` String hai to custom orderId id me jayegi
-          amount: plan.price,
-          status: 'PENDING',
-          user: { connect: { id: user.id } },
-          plan: { connect: { id: plan.id } },
-          product: { connect: { id: plan.productId } },
-        },
-      }).catch(async (err) => {
-        // Agar schema me `id` auto-generated (cuid/autoincrement) hai to bina custom ID ke create karega
-        return await prisma.order.create({
+      // 4. Create Local DB Pending Order
+      let dbOrder;
+      try {
+        dbOrder = await prisma.order.create({
+          data: {
+            id: generatedOrderId,
+            amount: plan.price,
+            status: 'PENDING',
+            user: { connect: { id: user.id } },
+            plan: { connect: { id: plan.id } },
+            product: { connect: { id: plan.productId } },
+          },
+        });
+      } catch (err) {
+        dbOrder = await prisma.order.create({
           data: {
             amount: plan.price,
             status: 'PENDING',
@@ -130,14 +132,12 @@ module.exports = (bot) => {
             product: { connect: { id: plan.productId } },
           },
         });
-      });
+      }
 
       const finalOrderId = dbOrder.id || generatedOrderId;
-
-      // 5. Customer Name Fallback
       const customerName = ctx.from.first_name || ctx.from.username || 'Customer';
 
-      // 6. Call FamGateway API
+      // 5. Call FamGateway API
       const gatewayResponse = await createPayment({
         amount: plan.price,
         orderId: String(finalOrderId),
@@ -149,21 +149,21 @@ module.exports = (bot) => {
         return ctx.reply(`❌ Payment creation failed: ${gatewayResponse.error}`);
       }
 
-      // 7. Save FamGateway Order ID in DB (if field exists in schema)
+      // 6. Save Gateway Order ID
       try {
         await prisma.order.update({
           where: { id: dbOrder.id },
           data: { gatewayOrderId: gatewayResponse.fam_order_id },
         });
-      } catch (e) {
-        // Fallback if gatewayOrderId column isn't present in schema
-      }
+      } catch (e) {}
 
-      // 8. Send QR Code & Payment Link
+      // 7. HTTPS URL Fix for Telegram Button
+      const checkoutUrl = gatewayResponse.checkout_url || gatewayResponse.payment_url || `https://famgateway.in/pay.php?order_id=${gatewayResponse.fam_order_id}`;
+
       const payText = `<b>💳 PAYMENT DETAILS</b>\n✦━━━━━━━━━━━━━━━━✦\n\n🆔 <b>Order ID:</b> <code>${finalOrderId}</code>\n💰 <b>Amount:</b> ₹${plan.price}\n📦 <b>Product:</b> ${plan.product.name}\n⏱️ <b>Plan:</b> ${plan.durationLabel}\n\n👇 Scan QR Code or click payment button below:`;
 
       const payButtons = Markup.inlineKeyboard([
-        [Markup.button.url('📲 Open UPI Payment', gatewayResponse.qr_text || gatewayResponse.payment_url || '#')],
+        [Markup.button.url('📲 Open Payment Page', checkoutUrl)],
         [Markup.button.callback('🔄 Verify Payment', `verify_${dbOrder.id}`)],
       ]);
 
