@@ -3,35 +3,13 @@ const prisma = require('../../services/db');
 const famgateway = require('../../services/famgateway');
 const logger = require('../../utils/logger');
 
-// Helper: Sanitize customer name to prevent FamGateway SQL crash
-function sanitizeName(name) {
-  if (!name) return 'Customer';
-  const clean = String(name).replace(/[^\w\s]/gi, '').trim();
-  return clean.length > 0 ? clean : 'Customer';
-}
-
 module.exports = (bot) => {
   bot.action(/^pay_(\d+)$/, async (ctx) => {
-    ctx.answerCbQuery('⌛ Creating payment...').catch(() => {});
+    // 1. Instant Callback Answer (Telegram UX Fast)
+    ctx.answerCbQuery().catch(() => {});
 
     try {
       const planId = parseInt(ctx.match[1]);
-      const telegramId = BigInt(ctx.from.id);
-
-      // 1. Fetch or Create User First
-      let user = await prisma.user.findUnique({ where: { telegramId } });
-      if (!user) {
-        user = await prisma.user.create({
-          data: {
-            telegramId,
-            username: ctx.from.username,
-            firstName: ctx.from.first_name,
-            lastName: ctx.from.last_name,
-          },
-        });
-      }
-
-      // 2. Fetch Plan
       const plan = await prisma.plan.findUnique({
         where: { id: planId },
         include: { product: true },
@@ -39,80 +17,61 @@ module.exports = (bot) => {
 
       if (!plan) return ctx.reply('❌ Invalid plan.');
 
-      const internalOrderId = `ORD_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-
-      // 3. Prisma Order Creation
+      // 2. Database Order Creation
       const order = await prisma.order.create({
         data: {
-          orderId: internalOrderId,
+          userId: BigInt(ctx.from.id),
+          productId: plan.productId,
+          planId: plan.id,
           amount: plan.price,
-          status: 'PENDING',
-          user: { connect: { id: user.id } },
-          plan: { connect: { id: plan.id } },
-          product: plan.productId ? { connect: { id: plan.productId } } : undefined,
         },
       });
 
-      const safeCustomerName = sanitizeName(ctx.from.first_name);
-
-      // 4. FamGateway Integration Call
-      const rawFamResponse = await famgateway.createPayment({
+      // 3. FamGateway Integration
+      const famResponse = await famgateway.createPayment({
         amount: Number(plan.price),
-        orderId: order.orderId || internalOrderId,
-        customerName: safeCustomerName,
+        orderId: order.id,
+        customerName: ctx.from.first_name || 'Customer',
       });
 
-      let famResponse;
-      try {
-        famResponse = typeof rawFamResponse === 'string' ? JSON.parse(rawFamResponse) : rawFamResponse;
-      } catch (e) {
-        famResponse = rawFamResponse;
-      }
-
-      const resData = famResponse.data || famResponse;
-      const isSuccess = famResponse.status === 'success' || famResponse.success === true || resData.order_id;
-
-      if (!isSuccess) {
+      if (!famResponse.success) {
         await prisma.order.update({
           where: { id: order.id },
-          data: { status: 'FAILED' },
+          data: { status: 'FAILED', paymentStatus: 'FAILED' },
         });
-        return ctx.reply(`❌ Payment creation failed: ${famResponse.error || resData.message || 'Gateway Error'}`);
+        return ctx.reply('❌ Payment creation failed.');
       }
 
-      const gatewayOrderId = resData.order_id || famResponse.fam_order_id;
-      const qrText = resData.upi_intent || resData.qr_text || famResponse.qr_text;
-      const qrImage = resData.qr_url || resData.qr_image || famResponse.qr_image;
-      const paymentUrl = resData.checkout_url || resData.payment_url || famResponse.payment_url;
-
-      // 5. Save Payment Data correctly in Payment Table (where famgatewayOrderId exists)
       await prisma.payment.create({
         data: {
-          order: { connect: { id: order.id } },
-          famgatewayOrderId: String(gatewayOrderId),
+          orderId: order.id,
+          famgatewayOrderId: famResponse.fam_order_id,
           amount: Number(plan.price),
           status: 'PENDING',
           paymentData: {
-            qr_text: qrText,
-            qr_url: qrImage,
+            qr_text: famResponse.qr_text,
+            qr_url: famResponse.qr_image,
           },
         },
       });
 
-      // 6. Send Payment Message
-      const textMsg = `💳 <b>PAYMENT CREATED</b>\n✦━━━━━━━━━━━━━━━━✦\n\n📦 <b>Product:</b> ${plan.product.name}\n⏱️ <b>Plan:</b> ${plan.durationLabel}\n💰 <b>Amount:</b> ₹${plan.price}\n🧾 <b>Order ID:</b> <code>${internalOrderId}</code>\n\n🔗 <b>UPI Link:</b>\n<code>${qrText || paymentUrl}</code>`;
+      // 4. Send Instant Payment Details Message
+      const textMsg = `💳 <b>PAYMENT CREATED</b>\n✦━━━━━━━━━━━━━━━━✦\n\n📦 Product: ${plan.product.name}\n⏱️ Plan: ${plan.durationLabel}\n💰 Amount: ₹${plan.price}\n🧾 Order ID: <code>${order.id.slice(0, 8)}</code>\n\n🔗 <b>UPI Link:</b>\n<code>${famResponse.qr_text}</code>`;
 
       const buttons = Markup.inlineKeyboard([
-        [Markup.button.url('🔗 Pay via Link', paymentUrl || qrText)],
+        [Markup.button.url('🔗 Pay via Link', famResponse.payment_url || famResponse.qr_text)],
         [Markup.button.callback('✅ I Have Paid', `paid_${order.id}`)],
         [Markup.button.callback('❌ Cancel Order', `cancel_${order.id}`)],
       ]);
 
       await ctx.replyWithHTML(textMsg, buttons);
 
-      const qrImageUrl = qrImage || `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(qrText)}`;
+      // 5. Send QR Code Instantly (No Timeout Delays, Direct Remote URL or Fast Buffer)
+      const qrImageUrl = famResponse.qr_image || `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(famResponse.qr_text)}`;
       
-      await ctx.replyWithPhoto(qrImageUrl, { caption: '👇 Scan this QR to pay' }).catch(() => {});
+      await ctx.replyWithPhoto(qrImageUrl, { caption: '👇 Scan this QR to pay' }).catch(async (err) => {
+        logger.warn('Direct QR URL failed, sending text link backup', err);
+      });
 
     } catch (error) {
       logger.error('Payment creation error:', error);
@@ -120,9 +79,10 @@ module.exports = (bot) => {
     }
   });
 
-  // Verification Handler
+  // ✅ Verification Flow
   bot.action(/^paid_(.+)$/, async (ctx) => {
-    ctx.answerCbQuery('⏳ Checking...').catch(() => {});
+    ctx.answerCbQuery('⏳ Verification checking...').catch(() => {});
+
     try {
       const orderId = ctx.match[1];
       const order = await prisma.order.findUnique({
@@ -130,51 +90,87 @@ module.exports = (bot) => {
         include: { payment: true, user: true, product: true, plan: true },
       });
 
-      if (!order) return ctx.reply('❌ Order not found.');
+      if (!order || order.user.telegramId !== BigInt(ctx.from.id)) {
+        return ctx.reply('❌ Order not found or unauthorized.');
+      }
 
-      if (order.status === 'SUCCESS' || order.status === 'PAYMENT_VERIFIED' || order.paymentStatus === 'SUCCESS') {
+      if (order.paymentStatus === 'SUCCESS') {
         return ctx.reply('✅ Payment already verified.');
       }
 
-      const verifyTarget = order.payment?.famgatewayOrderId || order.orderId;
-      const rawVerification = await famgateway.verifyPayment(verifyTarget);
-
-      let verification;
-      try {
-        verification = typeof rawVerification === 'string' ? JSON.parse(rawVerification) : rawVerification;
-      } catch (e) {
-        verification = rawVerification;
+      if (['CANCELLED', 'EXPIRED'].includes(order.status)) {
+        return ctx.reply('❌ Order is no longer active.');
       }
 
-      const verifyStatus = verification?.status || verification?.data?.status;
+      const verification = await famgateway.verifyPayment(order.payment.famgatewayOrderId);
 
-      if (verifyStatus === 'SUCCESS' || verifyStatus === 'COMPLETED') {
+      if (verification.status === 'SUCCESS') {
+        await prisma.$transaction([
+          prisma.payment.update({
+            where: { orderId: orderId },
+            data: { status: 'SUCCESS', verifiedAt: new Date() },
+          }),
+          prisma.order.update({
+            where: { id: orderId },
+            data: { paymentStatus: 'SUCCESS', status: 'PAYMENT_VERIFIED' },
+          }),
+        ]);
+
+        // Notify Admins
+        const admins = await prisma.admin.findMany({
+          where: { isSuperadmin: true, isActive: true, telegramId: { not: null } },
+        });
+
+        const adminMsg = `🔔 <b>NEW PAID ORDER</b>\n\n👤 User: ${order.user.firstName}\n📦 Product: ${order.product.name}\n⏱️ Plan: ${order.plan.durationLabel}\n💰 Amount: ₹${order.amount}\n🧾 Order ID: <code>${order.id.slice(0, 8)}</code>`;
+        const adminButtons = Markup.inlineKeyboard([
+          [Markup.button.callback('✅ Approve', `approve_${order.id}`), Markup.button.callback('❌ Reject', `reject_${order.id}`)],
+        ]);
+
+        for (const admin of admins) {
+          await bot.telegram.sendMessage(admin.telegramId.toString(), adminMsg, {
+            parse_mode: 'HTML',
+            ...adminButtons,
+          }).catch((err) => logger.error('Admin notify error:', err));
+        }
+
+        await ctx.reply('✅ Payment received successfully!\n👨‍💼 Sent to admin for approval.');
+      } else if (verification.status === 'PENDING') {
+        await ctx.reply('⏳ Payment is still pending. Please wait.');
+      } else {
         await prisma.order.update({
           where: { id: orderId },
-          data: { status: 'PAYMENT_VERIFIED' },
+          data: { status: 'EXPIRED', paymentStatus: 'FAILED' },
         });
-        await ctx.reply('✅ Payment received successfully!\n👨‍💼 Sent to admin for approval.');
-      } else {
-        await ctx.answerCbQuery('⏳ PAYMENT IS STILL PENDING!\n\nPlease complete the payment first.', { show_alert: true });
+        await ctx.reply('❌ Payment was not detected. Please try again.');
       }
-    } catch (err) {
-      logger.error('Verify error:', err);
-      ctx.reply('❌ Error verifying payment.').catch(() => {});
+    } catch (error) {
+      logger.error('Payment verification error:', error);
+      ctx.reply('❌ Verification error. Try again.').catch(() => {});
     }
   });
 
-  // Cancel Handler
+  // ❌ Order Cancellation
   bot.action(/^cancel_(.+)$/, async (ctx) => {
     ctx.answerCbQuery().catch(() => {});
     try {
       const orderId = ctx.match[1];
+      const order = await prisma.order.findUnique({ where: { id: orderId } });
+
+      if (!order || order.userId !== BigInt(ctx.from.id)) {
+        return ctx.reply('❌ Order not found.');
+      }
+      if (order.paymentStatus === 'SUCCESS') {
+        return ctx.reply('❌ Cannot cancel paid order.');
+      }
+
       await prisma.order.update({
         where: { id: orderId },
         data: { status: 'CANCELLED' },
       });
       await ctx.reply('❌ Order cancelled.');
-    } catch (err) {
-      ctx.reply('❌ Error cancelling.');
+    } catch (error) {
+      logger.error('Cancel error:', error);
+      ctx.reply('❌ Error cancelling order.').catch(() => {});
     }
   });
 };
