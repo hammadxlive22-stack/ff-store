@@ -7,6 +7,14 @@ const FAM_STATUS_ENDPOINT = process.env.FAMGATEWAY_STATUS_ENDPOINT || '/api/stat
 const FAM_API_KEY = process.env.FAMGATEWAY_API_KEY;
 const FAM_MERCHANT_ID = process.env.FAMGATEWAY_MERCHANT_ID;
 
+// Helper function to sanitize customer name for FamGateway DB
+function sanitizeName(name) {
+  if (!name) return 'Customer';
+  // Remove special symbols, emojis, fancy unicode fonts
+  const cleanName = String(name).replace(/[^\w\s]/gi, '').trim();
+  return cleanName.length > 0 ? cleanName : 'Customer';
+}
+
 async function createPayment({ amount, orderId, customerName }) {
   try {
     const numericAmount = Number(amount);
@@ -16,26 +24,36 @@ async function createPayment({ amount, orderId, customerName }) {
     }
     const amountString = numericAmount.toFixed(2); // "1.00", "50.00"
 
+    // Sanitize name to prevent FamGateway SQL/DB crash
+    const safeCustomerName = sanitizeName(customerName);
+
     const params = {
       api_key: FAM_API_KEY,
       merchant_id: FAM_MERCHANT_ID,
       order_id: orderId,           // internal UUID
       amount: amountString,
-      customer_name: customerName,
-      // currency: 'INR', // add if required
+      customer_name: safeCustomerName,
     };
 
     const url = `${FAM_BASE_URL}${FAM_CREATE_ENDPOINT}`;
     logger.info(`FamGateway Request URL: ${url}`);
     logger.info(`FamGateway Params:`, params);
 
-    // ✅ GET request (as per API)
+    // ✅ GET request
     const response = await axios.get(url, { params });
 
     logger.info('FamGateway create response:', response.data);
 
-    // ✅ Parse nested response: response.data.data.order_id
-    const apiData = response.data?.data || response.data; // fallback if no nesting
+    // Check if FamGateway internally returned error inside 200 response
+    if (response.data?.status === 'error' || response.data?.status === 500) {
+      logger.error('FamGateway Internal Error:', response.data);
+      return { 
+        success: false, 
+        error: response.data?.message || 'Gateway Database Error' 
+      };
+    }
+
+    const apiData = response.data?.data || response.data;
     const gatewayOrderId = apiData.order_id || apiData.fam_order_id || apiData.gateway_order_id;
 
     if (!gatewayOrderId) {
@@ -45,7 +63,7 @@ async function createPayment({ amount, orderId, customerName }) {
 
     return {
       success: true,
-      fam_order_id: gatewayOrderId,          // ✅ store this in DB
+      fam_order_id: gatewayOrderId,
       qr_text: apiData.upi_intent || apiData.qr_text || apiData.upi_link || apiData.payment_link,
       qr_image: apiData.qr_url || apiData.qr_image || apiData.qr_code_image || null,
       payment_url: apiData.checkout_url || apiData.payment_url || apiData.redirect_url || null,
@@ -68,7 +86,7 @@ async function verifyPayment(famOrderId) {
     const url = `${FAM_BASE_URL}${FAM_STATUS_ENDPOINT}`;
     const params = {
       api_key: FAM_API_KEY,
-      order_id: famOrderId, // gateway order ID (e.g., fg_LLW8FR7M)
+      order_id: famOrderId,
     };
 
     logger.info(`FamGateway Verify URL: ${url}`);
