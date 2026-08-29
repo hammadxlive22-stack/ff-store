@@ -62,7 +62,6 @@ module.exports = (bot) => {
         customerName: safeCustomerName,
       });
 
-      // Safe JSON parse if response comes as string
       let famResponse;
       try {
         famResponse = typeof rawFamResponse === 'string' ? JSON.parse(rawFamResponse) : rawFamResponse;
@@ -81,13 +80,12 @@ module.exports = (bot) => {
         return ctx.reply(`❌ Payment creation failed: ${famResponse.error || resData.message || 'Gateway Error'}`);
       }
 
-      // Extract correct properties from gateway response structure
       const gatewayOrderId = resData.order_id || famResponse.fam_order_id;
       const qrText = resData.upi_intent || resData.qr_text || famResponse.qr_text;
       const qrImage = resData.qr_url || resData.qr_image || famResponse.qr_image;
       const paymentUrl = resData.checkout_url || resData.payment_url || famResponse.payment_url;
 
-      // Save Payment Data
+      // 5. Save Payment Data correctly in Payment Table (where famgatewayOrderId exists)
       await prisma.payment.create({
         data: {
           order: { connect: { id: order.id } },
@@ -101,7 +99,7 @@ module.exports = (bot) => {
         },
       });
 
-      // 5. Send Payment Message
+      // 6. Send Payment Message
       const textMsg = `💳 <b>PAYMENT CREATED</b>\n✦━━━━━━━━━━━━━━━━✦\n\n📦 <b>Product:</b> ${plan.product.name}\n⏱️ <b>Plan:</b> ${plan.durationLabel}\n💰 <b>Amount:</b> ₹${plan.price}\n🧾 <b>Order ID:</b> <code>${internalOrderId}</code>\n\n🔗 <b>UPI Link:</b>\n<code>${qrText || paymentUrl}</code>`;
 
       const buttons = Markup.inlineKeyboard([
