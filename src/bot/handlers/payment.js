@@ -1,4 +1,5 @@
 const { Markup } = require('telegraf');
+const axios = require('axios');
 const prisma = require('../../services/db');
 const famgateway = require('../../services/famgateway');
 const logger = require('../../utils/logger');
@@ -79,7 +80,7 @@ module.exports = (bot) => {
     }
   });
 
-  // ✅ Verification Flow
+  // ✅ Verification Flow & Auto Key Delivery via Panel API
   bot.action(/^paid_(.+)$/, async (ctx) => {
     ctx.answerCbQuery('⏳ Verification checking...').catch(() => {});
 
@@ -105,6 +106,7 @@ module.exports = (bot) => {
       const verification = await famgateway.verifyPayment(order.payment.famgatewayOrderId);
 
       if (verification.status === 'SUCCESS') {
+        // Mark payment and order as successful
         await prisma.$transaction([
           prisma.payment.update({
             where: { orderId: orderId },
@@ -112,28 +114,62 @@ module.exports = (bot) => {
           }),
           prisma.order.update({
             where: { id: orderId },
-            data: { paymentStatus: 'SUCCESS', status: 'PAYMENT_VERIFIED' },
+            data: { paymentStatus: 'SUCCESS', status: 'COMPLETED' },
           }),
         ]);
 
-        // Notify Admins
+        // 🚀 Hit Panel API to generate & fetch license key automatically
+        let licenseKeyText = '';
+        try {
+          const apiParams = new URLSearchParams({
+            api_key: process.env.PANEL_API_KEY,
+            action: 'buy',
+            product_id: order.product.panelProductId || order.product.id, // Ensure your product model has panelProductId or mapped ID
+            duration: order.plan.durationLabel,
+          });
+
+          const panelResponse = await axios.post('https://adminpanels.shop/api/reseller_v1.php', apiParams.toString(), {
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'x-master-key': process.env.PANEL_MASTER_KEY
+            },
+            timeout: 20000
+          });
+
+          const panelData = panelResponse.data;
+          
+          // Assuming the panel returns the key in data (adjust key field name if panel returns JSON like {status: true, key: 'XYZ'} or raw string)
+          if (panelData) {
+            licenseKeyText = typeof panelData === 'object' ? (panelData.key || panelData.license || JSON.stringify(panelData)) : panelData;
+          }
+        } catch (apiErr) {
+          logger.error('Panel API automatic key generation error:', apiErr);
+          licenseKeyText = '⚠️ Key generation error. Contact admin with your Order ID.';
+        }
+
+        // Send success message along with the generated license key to the user
+        await ctx.reply(
+          `✅ <b>Payment Verified Successfully!</b>\n\n` +
+          `📦 Product: ${order.product.name}\n` +
+          `⏱️ Plan: ${order.plan.durationLabel}\n` +
+          `🧾 Order ID: <code>${order.id.slice(0, 8)}</code>\n\n` +
+          `🔑 <b>Your License Key:</b>\n<code>${licenseKeyText}</code>`,
+          { parse_mode: 'HTML' }
+        );
+
+        // Optional: Notify Admins about the successful auto-delivery
         const admins = await prisma.admin.findMany({
           where: { isSuperadmin: true, isActive: true, telegramId: { not: null } },
         });
 
-        const adminMsg = `🔔 <b>NEW PAID ORDER</b>\n\n👤 User: ${order.user.firstName}\n📦 Product: ${order.product.name}\n⏱️ Plan: ${order.plan.durationLabel}\n💰 Amount: ₹${order.amount}\n🧾 Order ID: <code>${order.id.slice(0, 8)}</code>`;
-        const adminButtons = Markup.inlineKeyboard([
-          [Markup.button.callback('✅ Approve', `approve_${order.id}`), Markup.button.callback('❌ Reject', `reject_${order.id}`)],
-        ]);
+        const adminMsg = `🔔 <b>AUTO-DELIVERED ORDER</b>\n\n👤 User: ${order.user.firstName}\n📦 Product: ${order.product.name}\n⏱️ Plan: ${order.plan.durationLabel}\n💰 Amount: ₹${order.amount}\n🧾 Order ID: <code>${order.id.slice(0, 8)}</code>\n🔑 Key: <code>${licenseKeyText}</code>`;
 
         for (const admin of admins) {
           await bot.telegram.sendMessage(admin.telegramId.toString(), adminMsg, {
             parse_mode: 'HTML',
-            ...adminButtons,
           }).catch((err) => logger.error('Admin notify error:', err));
         }
 
-        await ctx.reply('✅ Payment received successfully!\n👨‍💼 Sent to admin for approval.');
       } else if (verification.status === 'PENDING') {
         await ctx.reply('⏳ Payment is still pending. Please wait.');
       } else {
