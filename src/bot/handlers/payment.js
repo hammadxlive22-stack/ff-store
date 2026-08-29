@@ -6,6 +6,7 @@ const logger = require('../../utils/logger');
 
 module.exports = (bot) => {
   bot.action(/^pay_(\d+)$/, async (ctx) => {
+    // ✅ सबसे पहले callback answer करो (कोई await नहीं)
     ctx.answerCbQuery().catch(() => {});
 
     try {
@@ -46,48 +47,86 @@ module.exports = (bot) => {
           famgatewayOrderId: famResponse.fam_order_id,
           amount: Number(plan.price),
           status: 'PENDING',
-          paymentData: { qr_text: famResponse.qr_text, qr_url: famResponse.qr_image },
+          paymentData: {
+            qr_text: famResponse.qr_text,
+            qr_url: famResponse.qr_image,
+          },
         },
       });
 
-      // ✅ Pay via UPI button (https link)
-      const payUrl = famResponse.payment_url || 'https://famgateway.in';
+      // ✅ Step 1: UPI link text message तुरंत भेजो
+      const textMsg = `💳 <b>PAYMENT CREATED</b>\n✦━━━━━━━━━━━━━━━━✦\n\n📦 Product: ${plan.product.name}\n⏱️ Plan: ${plan.durationLabel}\n💰 Amount: ₹${plan.price}\n🧾 Order ID: <code>${order.id.slice(0,8)}</code>\n\n🔗 <b>UPI Link:</b>\n<code>${famResponse.qr_text}</code>`;
 
       const buttons = Markup.inlineKeyboard([
-        [Markup.button.url('🔗 Pay via UPI', payUrl)],
+        [Markup.button.url('🔗 Pay via Link', famResponse.payment_url || 'https://famgateway.in')],
         [Markup.button.callback('✅ I Have Paid', `paid_${order.id}`)],
         [Markup.button.callback('❌ Cancel Order', `cancel_${order.id}`)],
       ]);
 
-      const caption = `💳 <b>PAYMENT CREATED</b>\n✦━━━━━━━━━━━━━━━━✦\n\n📦 Product: ${plan.product.name}\n⏱️ Plan: ${plan.durationLabel}\n💰 Amount: ₹${plan.price}\n🧾 Order ID: <code>${order.id.slice(0,8)}</code>\n\n👇 Scan QR or click button to pay`;
+      await ctx.replyWithHTML(textMsg, buttons);
 
-      // ✅ QR generate करके photo भेजो (तुरंत)
+      // ✅ Step 2: QR भेजने से पहले 2 सेकंड delay (Telegram rate limit से बचें)
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // QR भेजने की कोशिश (retry के साथ)
       if (famResponse.qr_text) {
+        // Attempt 1: Photo 150px
         try {
+          // User को बताओ कि QR आ रहा है
+          await ctx.replyWithChatAction('upload_photo').catch(() => {});
           const qrBuffer = await QRCode.toBuffer(famResponse.qr_text, {
             type: 'png',
-            width: 250,
+            width: 150,
             margin: 1,
             errorCorrectionLevel: 'M',
           });
-
           await ctx.replyWithPhoto(
             { source: qrBuffer },
-            {
-              caption,
-              parse_mode: 'HTML',
-              ...buttons,
-            }
+            { caption: '👇 Scan this QR to pay' }
           );
-          logger.info('QR photo sent successfully');
-        } catch (qrError) {
-          logger.error('QR generation failed, fallback to text with button:', qrError.message);
-          // Fallback: बिना QR, सिर्फ message + buttons
-          await ctx.replyWithHTML(caption, buttons);
+          logger.info('QR photo sent (150px)');
+          return;
+        } catch (photoError1) {
+          logger.error('Photo attempt 1 failed:', JSON.stringify(photoError1));
         }
-      } else {
-        // अगर qr_text नहीं है, तो सिर्फ message + buttons
-        await ctx.replyWithHTML(caption, buttons);
+
+        // 3 सेकंड wait करके document try करो
+        await new Promise(resolve => setTimeout(resolve, 3000));
+
+        try {
+          const qrBuffer = await QRCode.toBuffer(famResponse.qr_text, {
+            type: 'png',
+            width: 150,
+            margin: 1,
+          });
+          await ctx.replyWithDocument(
+            { source: qrBuffer, filename: 'payment-qr.png' },
+            { caption: '👇 Scan this QR to pay' }
+          );
+          logger.info('QR document sent (150px)');
+          return;
+        } catch (docError) {
+          logger.error('Document send failed:', JSON.stringify(docError));
+        }
+
+        // 5 सेकंड wait करके फिर photo try करो (और छोटा 120px)
+        await new Promise(resolve => setTimeout(resolve, 5000));
+
+        try {
+          const qrBuffer = await QRCode.toBuffer(famResponse.qr_text, {
+            type: 'png',
+            width: 120,
+            margin: 1,
+          });
+          await ctx.replyWithPhoto(
+            { source: qrBuffer },
+            { caption: '👇 Scan this QR to pay' }
+          );
+          logger.info('QR photo sent (120px)');
+        } catch (photoError2) {
+          logger.error('Photo attempt 2 failed:', JSON.stringify(photoError2));
+          // UPI link पहले से भेज दिया गया है
+        }
       }
     } catch (error) {
       logger.error('Payment creation error:', error);
