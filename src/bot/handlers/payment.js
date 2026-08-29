@@ -1,3 +1,4 @@
+
 const { Markup } = require('telegraf');
 const QRCode = require('qrcode');
 const prisma = require('../../services/db');
@@ -65,42 +66,67 @@ module.exports = (bot) => {
 
       await ctx.replyWithHTML(textMsg, buttons);
 
-      // ✅ Step 2: QR generate और भेजो (optimized)
+      // ✅ Step 2: QR भेजने से पहले 2 सेकंड delay (Telegram rate limit से बचें)
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // QR भेजने की कोशिश (retry के साथ)
       if (famResponse.qr_text) {
-        // छोटा QR (200px) ताकि तेज़ बने
+        // Attempt 1: Photo 150px
         try {
           // User को बताओ कि QR आ रहा है
           await ctx.replyWithChatAction('upload_photo').catch(() => {});
           const qrBuffer = await QRCode.toBuffer(famResponse.qr_text, {
             type: 'png',
-            width: 200,
+            width: 150,
             margin: 1,
             errorCorrectionLevel: 'M',
           });
+          await ctx.replyWithPhoto(
+            { source: qrBuffer },
+            { caption: '👇 Scan this QR to pay' }
+          );
+          logger.info('QR photo sent (150px)');
+          return;
+        } catch (photoError1) {
+          logger.error('Photo attempt 1 failed:', JSON.stringify(photoError1));
+        }
 
-          // Photo भेजो
-          try {
-            await ctx.replyWithPhoto(
-              { source: qrBuffer },
-              { caption: '👇 Scan this QR to pay' }
-            );
-            logger.info('QR photo sent successfully');
-          } catch (photoError) {
-            logger.warn('Photo send failed, trying document:', photoError.message);
-            // Document fallback
-            try {
-              await ctx.replyWithDocument(
-                { source: qrBuffer, filename: 'payment-qr.png' },
-                { caption: '👇 Scan this QR to pay' }
-              );
-              logger.info('QR document sent successfully');
-            } catch (docError) {
-              logger.warn('Document send also failed:', docError.message);
-              // UPI link पहले से भेज दिया गया है
-            }
-          }
-        } catch (qrGenError) {
-          logger.error('QR generation failed:', qrGenError.message);
+        // 3 सेकंड wait करके document try करो
+        await new Promise(resolve => setTimeout(resolve, 3000));
+
+        try {
+          const qrBuffer = await QRCode.toBuffer(famResponse.qr_text, {
+            type: 'png',
+            width: 150,
+            margin: 1,
+          });
+          await ctx.replyWithDocument(
+            { source: qrBuffer, filename: 'payment-qr.png' },
+            { caption: '👇 Scan this QR to pay' }
+          );
+          logger.info('QR document sent (150px)');
+          return;
+        } catch (docError) {
+          logger.error('Document send failed:', JSON.stringify(docError));
+        }
+
+        // 5 सेकंड wait करके फिर photo try करो (और छोटा 120px)
+        await new Promise(resolve => setTimeout(resolve, 5000));
+
+        try {
+          const qrBuffer = await QRCode.toBuffer(famResponse.qr_text, {
+            type: 'png',
+            width: 120,
+            margin: 1,
+          });
+          await ctx.replyWithPhoto(
+            { source: qrBuffer },
+            { caption: '👇 Scan this QR to pay' }
+          );
+          logger.info('QR photo sent (120px)');
+        } catch (photoError2) {
+          logger.error('Photo attempt 2 failed:', JSON.stringify(photoError2));
+          // UPI link पहले से भेज दिया गया है
         }
       }
     } catch (error) {
