@@ -78,7 +78,6 @@ module.exports = (bot) => {
     }
   });
 
-  // ✅ HANDLER: Pay Action (String Parsing Fix Applied)
   bot.action(/^pay_(\d+)$/, async (ctx) => {
     ctx.answerCbQuery('⌛ Creating payment QR...').catch(() => {});
 
@@ -107,40 +106,25 @@ module.exports = (bot) => {
 
       const generatedOrderId = `ORD_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
 
-      let dbOrder;
-      try {
-        dbOrder = await prisma.order.create({
-          data: {
-            id: generatedOrderId,
-            amount: plan.price,
-            status: 'PENDING',
-            user: { connect: { id: user.id } },
-            plan: { connect: { id: plan.id } },
-            product: { connect: { id: plan.productId } },
-          },
-        });
-      } catch (err) {
-        dbOrder = await prisma.order.create({
-          data: {
-            amount: plan.price,
-            status: 'PENDING',
-            user: { connect: { id: user.id } },
-            plan: { connect: { id: plan.id } },
-            product: { connect: { id: plan.productId } },
-          },
-        });
-      }
+      let dbOrder = await prisma.order.create({
+        data: {
+          id: generatedOrderId,
+          amount: plan.price,
+          status: 'PENDING',
+          user: { connect: { id: user.id } },
+          plan: { connect: { id: plan.id } },
+          product: { connect: { id: plan.productId } },
+        },
+      });
 
-      const finalOrderId = dbOrder.id || generatedOrderId;
       const customerName = ctx.from.first_name || ctx.from.username || 'Customer';
 
       const gatewayResponseRaw = await createPayment({
         amount: plan.price,
-        orderId: String(finalOrderId),
+        orderId: String(dbOrder.id),
         customerName,
       });
 
-      // 🚨 FIX: Force parse to handle stringified JSON safely
       let parsedApi;
       try {
         parsedApi = typeof gatewayResponseRaw === 'string' ? JSON.parse(gatewayResponseRaw) : gatewayResponseRaw;
@@ -158,14 +142,7 @@ module.exports = (bot) => {
       const responseData = parsedApi.data || parsedApi;
       const gatewayOrderId = responseData.order_id || parsedApi.fam_order_id;
 
-      try {
-        await prisma.order.update({
-          where: { id: dbOrder.id },
-          data: { gatewayOrderId: gatewayOrderId },
-        });
-      } catch (e) {
-        logger.error('DB Update Error:', e);
-      }
+      // 🛑 Yahan se galat gatewayOrderId update hata diya hai taaki crash na ho
 
       const checkoutUrl = responseData.checkout_url || parsedApi.checkout_url || `https://famgateway.in/pay.php?order_id=${gatewayOrderId}`;
       const upiIntentUrl = responseData.upi_intent || parsedApi.upi_intent || responseData.qr_text || parsedApi.qr_text;
@@ -183,7 +160,7 @@ module.exports = (bot) => {
         photoPayload = fallbackQrUrl; 
       }
 
-      const payText = `<b>💳 PAYMENT DETAILS</b>\n✦━━━━━━━━━━━━━━━━✦\n\n🆔 <b>Order ID:</b> <code>${finalOrderId}</code>\n💰 <b>Amount:</b> ₹${plan.price}\n📦 <b>Product:</b> ${plan.product.name}\n⏱️ <b>Plan:</b> ${plan.durationLabel}\n\n👇 Scan QR Code or click payment button below:`;
+      const payText = `<b>💳 PAYMENT DETAILS</b>\n✦━━━━━━━━━━━━━━━━✦\n\n🆔 <b>Order ID:</b> <code>${dbOrder.id}</code>\n💰 <b>Amount:</b> ₹${plan.price}\n📦 <b>Product:</b> ${plan.product.name}\n⏱️ <b>Plan:</b> ${plan.durationLabel}\n\n👇 Scan QR Code or click payment button below:`;
 
       const payButtons = Markup.inlineKeyboard([
         [Markup.button.url('📲 Open Payment Page', checkoutUrl)],
@@ -206,13 +183,12 @@ module.exports = (bot) => {
     }
   });
 
-  // 🔄 VERIFY PAYMENT ACTION
   bot.action(/^verify_(.+)$/, async (ctx) => {
     try {
       const orderIdParam = ctx.match[1];
       
       const order = await prisma.order.findUnique({
-        where: { id: isNaN(Number(orderIdParam)) ? orderIdParam : Number(orderIdParam) },
+        where: { id: orderIdParam },
       });
 
       if (!order) {
@@ -223,7 +199,7 @@ module.exports = (bot) => {
         return ctx.answerCbQuery('✅ Payment already received & verified!', { show_alert: true });
       }
 
-      const statusResponse = await verifyPayment(order.gatewayOrderId || order.id);
+      const statusResponse = await verifyPayment(order.id);
 
       let parsedStatus;
       try {
