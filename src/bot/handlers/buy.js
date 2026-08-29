@@ -78,7 +78,7 @@ module.exports = (bot) => {
     }
   });
 
-  // ✅ HANDLER: Pay Action (Fully Fixed for API Response & QR Generation)
+  // ✅ HANDLER: Pay Action (String Parsing Fix Applied)
   bot.action(/^pay_(\d+)$/, async (ctx) => {
     ctx.answerCbQuery('⌛ Creating payment QR...').catch(() => {});
 
@@ -134,36 +134,43 @@ module.exports = (bot) => {
       const finalOrderId = dbOrder.id || generatedOrderId;
       const customerName = ctx.from.first_name || ctx.from.username || 'Customer';
 
-      const gatewayResponse = await createPayment({
+      const gatewayResponseRaw = await createPayment({
         amount: plan.price,
         orderId: String(finalOrderId),
         customerName,
       });
 
-      // ✅ FIX 1: Correctly check success status from FamGateway
-      const isSuccess = gatewayResponse.status === 'success' || gatewayResponse.success === true;
+      // 🚨 FIX: Force parse to handle stringified JSON safely
+      let parsedApi;
+      try {
+        parsedApi = typeof gatewayResponseRaw === 'string' ? JSON.parse(gatewayResponseRaw) : gatewayResponseRaw;
+      } catch (e) {
+        parsedApi = gatewayResponseRaw;
+      }
+
+      const isSuccess = parsedApi.status === 'success' || parsedApi.success === true;
       
       if (!isSuccess) {
-        logger.error('Payment creation failed at gateway:', gatewayResponse);
+        logger.error('Payment creation failed at gateway:', parsedApi);
         return ctx.reply(`❌ Payment creation failed. Please try again.`);
       }
 
-      // ✅ FIX 2: Correctly extract 'data' object
-      const responseData = gatewayResponse.data || gatewayResponse;
+      const responseData = parsedApi.data || parsedApi;
+      const gatewayOrderId = responseData.order_id || parsedApi.fam_order_id;
 
       try {
         await prisma.order.update({
           where: { id: dbOrder.id },
-          data: { gatewayOrderId: responseData.order_id },
+          data: { gatewayOrderId: gatewayOrderId },
         });
       } catch (e) {
         logger.error('DB Update Error:', e);
       }
 
-      const checkoutUrl = responseData.checkout_url || `https://famgateway.in/pay.php?order_id=${responseData.order_id}`;
-      const upiIntentUrl = responseData.upi_intent;
+      const checkoutUrl = responseData.checkout_url || parsedApi.checkout_url || `https://famgateway.in/pay.php?order_id=${gatewayOrderId}`;
+      const upiIntentUrl = responseData.upi_intent || parsedApi.upi_intent || responseData.qr_text || parsedApi.qr_text;
+      const fallbackQrUrl = responseData.qr_url || parsedApi.qr_image;
 
-      // ✅ FIX 3: High-Quality QR Buffer Generation (Fixes PhonePe scan issue)
       let photoPayload = null;
       if (upiIntentUrl) {
         const qrBuffer = await QRCode.toBuffer(upiIntentUrl, {
@@ -172,8 +179,8 @@ module.exports = (bot) => {
           width: 500,
         });
         photoPayload = { source: qrBuffer };
-      } else if (responseData.qr_url) {
-        photoPayload = responseData.qr_url; // Fallback to API Image link
+      } else if (fallbackQrUrl) {
+        photoPayload = fallbackQrUrl; 
       }
 
       const payText = `<b>💳 PAYMENT DETAILS</b>\n✦━━━━━━━━━━━━━━━━✦\n\n🆔 <b>Order ID:</b> <code>${finalOrderId}</code>\n💰 <b>Amount:</b> ₹${plan.price}\n📦 <b>Product:</b> ${plan.product.name}\n⏱️ <b>Plan:</b> ${plan.durationLabel}\n\n👇 Scan QR Code or click payment button below:`;
@@ -199,7 +206,7 @@ module.exports = (bot) => {
     }
   });
 
-  // 🔄 VERIFY PAYMENT ACTION (Shows popup alert if pending)
+  // 🔄 VERIFY PAYMENT ACTION
   bot.action(/^verify_(.+)$/, async (ctx) => {
     try {
       const orderIdParam = ctx.match[1];
@@ -218,7 +225,14 @@ module.exports = (bot) => {
 
       const statusResponse = await verifyPayment(order.gatewayOrderId || order.id);
 
-      if (statusResponse && (statusResponse.status === 'SUCCESS' || statusResponse.status === 'COMPLETED')) {
+      let parsedStatus;
+      try {
+        parsedStatus = typeof statusResponse === 'string' ? JSON.parse(statusResponse) : statusResponse;
+      } catch (e) {
+        parsedStatus = statusResponse;
+      }
+
+      if (parsedStatus && (parsedStatus.status === 'SUCCESS' || parsedStatus.status === 'COMPLETED')) {
         await prisma.order.update({
           where: { id: order.id },
           data: { status: 'COMPLETED' },
@@ -227,7 +241,6 @@ module.exports = (bot) => {
         await ctx.answerCbQuery('🎉 Payment Successful!', { show_alert: true });
         return ctx.reply(`✅ <b>Payment Received!</b>\n\nOrder ID: <code>${order.id}</code>\nYour license / key will be delivered shortly.`, { parse_mode: 'HTML' });
       } else {
-        // 🚨 PENDING RESPONSE ALERT
         return ctx.answerCbQuery('⏳ PAYMENT IS STILL PENDING!\n\nPlease complete the payment in your UPI app and try again.', { show_alert: true });
       }
 
