@@ -78,7 +78,7 @@ module.exports = (bot) => {
     }
   });
 
-  // ✅ HANDLER: Pay Action
+  // ✅ HANDLER: Pay Action (Fully Fixed for API Response & QR Generation)
   bot.action(/^pay_(\d+)$/, async (ctx) => {
     ctx.answerCbQuery('⌛ Creating payment QR...').catch(() => {});
 
@@ -140,29 +140,40 @@ module.exports = (bot) => {
         customerName,
       });
 
-      if (!gatewayResponse.success) {
-        logger.error('Payment creation failed at gateway:', gatewayResponse.error);
-        return ctx.reply(`❌ Payment creation failed: ${gatewayResponse.error}`);
+      // ✅ FIX 1: Correctly check success status from FamGateway
+      const isSuccess = gatewayResponse.status === 'success' || gatewayResponse.success === true;
+      
+      if (!isSuccess) {
+        logger.error('Payment creation failed at gateway:', gatewayResponse);
+        return ctx.reply(`❌ Payment creation failed. Please try again.`);
       }
+
+      // ✅ FIX 2: Correctly extract 'data' object
+      const responseData = gatewayResponse.data || gatewayResponse;
 
       try {
         await prisma.order.update({
           where: { id: dbOrder.id },
-          data: { gatewayOrderId: gatewayResponse.fam_order_id },
+          data: { gatewayOrderId: responseData.order_id },
         });
-      } catch (e) {}
+      } catch (e) {
+        logger.error('DB Update Error:', e);
+      }
 
-      const checkoutUrl = gatewayResponse.checkout_url || gatewayResponse.payment_url || `https://famgateway.in/pay.php?order_id=${gatewayResponse.fam_order_id}`;
-      const upiIntentUrl = gatewayResponse.upi_intent || gatewayResponse.qr_text;
+      const checkoutUrl = responseData.checkout_url || `https://famgateway.in/pay.php?order_id=${responseData.order_id}`;
+      const upiIntentUrl = responseData.upi_intent;
 
-      // 🎯 High-Quality QR Buffer Generation (Fixes "Unable to scan QR" in PhonePe)
-      let qrBuffer = null;
+      // ✅ FIX 3: High-Quality QR Buffer Generation (Fixes PhonePe scan issue)
+      let photoPayload = null;
       if (upiIntentUrl) {
-        qrBuffer = await QRCode.toBuffer(upiIntentUrl, {
+        const qrBuffer = await QRCode.toBuffer(upiIntentUrl, {
           errorCorrectionLevel: 'H',
           margin: 2,
           width: 500,
         });
+        photoPayload = { source: qrBuffer };
+      } else if (responseData.qr_url) {
+        photoPayload = responseData.qr_url; // Fallback to API Image link
       }
 
       const payText = `<b>💳 PAYMENT DETAILS</b>\n✦━━━━━━━━━━━━━━━━✦\n\n🆔 <b>Order ID:</b> <code>${finalOrderId}</code>\n💰 <b>Amount:</b> ₹${plan.price}\n📦 <b>Product:</b> ${plan.product.name}\n⏱️ <b>Plan:</b> ${plan.durationLabel}\n\n👇 Scan QR Code or click payment button below:`;
@@ -172,8 +183,8 @@ module.exports = (bot) => {
         [Markup.button.callback('🔄 Verify Payment', `verify_${dbOrder.id}`)],
       ]);
 
-      if (qrBuffer) {
-        await ctx.replyWithPhoto({ source: qrBuffer }, {
+      if (photoPayload) {
+        await ctx.replyWithPhoto(photoPayload, {
           caption: payText,
           parse_mode: 'HTML',
           ...payButtons,
@@ -188,7 +199,7 @@ module.exports = (bot) => {
     }
   });
 
-  // 🔄 VERIFY PAYMENT ACTION (Shows alert if pending)
+  // 🔄 VERIFY PAYMENT ACTION (Shows popup alert if pending)
   bot.action(/^verify_(.+)$/, async (ctx) => {
     try {
       const orderIdParam = ctx.match[1];
@@ -205,7 +216,6 @@ module.exports = (bot) => {
         return ctx.answerCbQuery('✅ Payment already received & verified!', { show_alert: true });
       }
 
-      // Check payment status with FamGateway API
       const statusResponse = await verifyPayment(order.gatewayOrderId || order.id);
 
       if (statusResponse && (statusResponse.status === 'SUCCESS' || statusResponse.status === 'COMPLETED')) {
