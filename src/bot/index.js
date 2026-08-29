@@ -1,10 +1,9 @@
 const { Telegraf } = require('telegraf');
 const logger = require('../utils/logger');
 
-// ✅ Handler timeout 3 minutes (QR upload ke liye)
-const bot = new Telegraf(process.env.BOT_TOKEN, {
-  handlerTimeout: 180000, // 3 minutes
-});
+const bot = new Telegraf(process.env.BOT_TOKEN); // कोई handlerTimeout नहीं
+
+// ... बाकी same
 
 // Import handlers
 const startHandler = require('./handlers/start');
