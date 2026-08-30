@@ -6,7 +6,6 @@ const logger = require('../../utils/logger');
 
 module.exports = (bot) => {
   bot.action(/^pay_(\d+)$/, async (ctx) => {
-    // 1. Instant Callback Answer (Telegram UX Fast)
     ctx.answerCbQuery().catch(() => {});
 
     try {
@@ -18,12 +17,10 @@ module.exports = (bot) => {
 
       if (!plan) return ctx.reply('❌ Invalid plan.');
 
-      // Check if product is under maintenance
       if (plan.product.isMaintenance) {
         return ctx.reply(`⚠️ Sorry! Product "<b>${plan.product.name}</b>" is currently under maintenance. Please check back later.`, { parse_mode: 'HTML' });
       }
 
-      // 2. Database Order Creation
       const order = await prisma.order.create({
         data: {
           userId: BigInt(ctx.from.id),
@@ -33,7 +30,6 @@ module.exports = (bot) => {
         },
       });
 
-      // 3. FamGateway Integration
       const famResponse = await famgateway.createPayment({
         amount: Number(plan.price),
         orderId: order.id,
@@ -61,7 +57,6 @@ module.exports = (bot) => {
         },
       });
 
-      // 4. Combined Payment Details + QR Code Message
       const textMsg = `💳 <b>PAYMENT CREATED</b>\n✦━━━━━━━━━━━━━━━━✦\n\n📦 Product: ${plan.product.name}\n⏱️ Plan: ${plan.durationLabel}\n💰 Amount: ₹${plan.price}\n🧾 Order ID: <code>${order.id.slice(0, 8)}</code>\n\n🔗 <b>UPI Link:</b>\n<code>${famResponse.qr_text}</code>\n\n👇 Scan this QR or use buttons below to pay:`;
 
       const buttons = Markup.inlineKeyboard([
@@ -72,7 +67,6 @@ module.exports = (bot) => {
 
       const qrImageUrl = famResponse.qr_image || `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(famResponse.qr_text)}`;
 
-      // Send photo and text together in a single message with caption and buttons
       await ctx.replyWithPhoto(qrImageUrl, {
         caption: textMsg,
         parse_mode: 'HTML',
@@ -85,12 +79,12 @@ module.exports = (bot) => {
     }
   });
 
-  // ✅ Verification Flow & Auto Key Delivery via Panel API
   bot.action(/^paid_(.+)$/, async (ctx) => {
     ctx.answerCbQuery('⏳ Verification checking...').catch(() => {});
 
+    const orderId = ctx.match[1];
+
     try {
-      const orderId = ctx.match[1];
       const order = await prisma.order.findUnique({
         where: { id: orderId },
         include: { payment: true, user: true, product: true, plan: true },
@@ -100,16 +94,15 @@ module.exports = (bot) => {
         return ctx.reply('❌ Order not found or unauthorized.');
       }
 
-      // 🔒 Prevent double verification/delivery if already completed
+      // 🔒 Strict Double Verification & Delivery Lock
       if (order.paymentStatus === 'SUCCESS' || order.deliveryStatus === 'DELIVERED') {
         return ctx.reply('✅ Payment is already verified and key has been delivered.');
       }
 
-      if (['CANCELLED', 'EXPIRED'].includes(order.status)) {
+      if (['CANCELLED', 'EXPIRED', 'COMPLETED'].includes(order.status)) {
         return ctx.reply('❌ Order is no longer active.');
       }
 
-      // Check maintenance status again
       if (order.product.isMaintenance) {
         return ctx.reply(`⚠️ Product "<b>${order.product.name}</b>" is under maintenance. Your payment is safe, contact admin.`, { parse_mode: 'HTML' });
       }
@@ -117,19 +110,22 @@ module.exports = (bot) => {
       const verification = await famgateway.verifyPayment(order.payment.famgatewayOrderId);
 
       if (verification.status === 'SUCCESS') {
-        // Mark payment and order as successful
-        await prisma.$transaction([
-          prisma.payment.update({
-            where: { orderId: orderId },
-            data: { status: 'SUCCESS', verifiedAt: new Date() },
-          }),
-          prisma.order.update({
-            where: { id: orderId },
-            data: { paymentStatus: 'SUCCESS', status: 'COMPLETED', deliveryStatus: 'DELIVERED' },
-          }),
-        ]);
+        
+        // 🔒 Atomic Database Lock using Prisma Transaction & status check
+        const updatedOrderCount = await prisma.order.updateMany({
+          where: { id: orderId, paymentStatus: { not: 'SUCCESS' } },
+          data: { paymentStatus: 'SUCCESS', status: 'COMPLETED', deliveryStatus: 'DELIVERED' }
+        });
 
-        // 🚀 Hit Panel API to generate & fetch license key automatically
+        if (updatedOrderCount.count === 0) {
+          return ctx.reply('⚠️ This payment was already processed simultaneously.');
+        }
+
+        await prisma.payment.update({
+          where: { orderId: orderId },
+          data: { status: 'SUCCESS', verifiedAt: new Date() },
+        });
+
         let licenseKeyText = '';
         try {
           const apiParams = new URLSearchParams({
@@ -151,7 +147,6 @@ module.exports = (bot) => {
           
           if (panelData) {
             if (typeof panelData === 'object') {
-              // Handle panel error responses gracefully
               if (panelData.status === false || panelData.error || panelData.msg) {
                 licenseKeyText = `⚠️ Panel Error: ${panelData.error || panelData.msg || JSON.stringify(panelData)}`;
               } else {
@@ -166,7 +161,6 @@ module.exports = (bot) => {
           licenseKeyText = '⚠️ Key generation error. Contact admin with your Order ID.';
         }
 
-        // 💾 Save Delivery Record in DB so it shows up in Live Logs & User Search
         await prisma.delivery.create({
           data: {
             orderId: order.id,
@@ -174,14 +168,12 @@ module.exports = (bot) => {
           },
         }).catch((err) => logger.error('Delivery record save error:', err));
 
-        // Fetch dynamic support channel link if set by admin
         const supportChannelSetting = await prisma.systemSetting.findUnique({ where: { key: 'SUPPORT_CHANNEL_LINK' } });
         let channelPrompt = '';
         if (supportChannelSetting && supportChannelSetting.value) {
           channelPrompt = `\n📢 Join Official Channel: ${supportChannelSetting.value}\n`;
         }
 
-        // Send success message along with the generated license key and optional channel link to the user
         await ctx.reply(
           `✅ <b>Payment Verified Successfully!</b>\n\n` +
           `📦 Product: ${order.product.name}\n` +
@@ -191,7 +183,6 @@ module.exports = (bot) => {
           { parse_mode: 'HTML' }
         );
 
-        // Optional: Notify Admins about the successful auto-delivery
         const admins = await prisma.admin.findMany({
           where: { isSuperadmin: true, isActive: true, telegramId: { not: null } },
         });
@@ -219,7 +210,6 @@ module.exports = (bot) => {
     }
   });
 
-  // ❌ Order Cancellation
   bot.action(/^cancel_(.+)$/, async (ctx) => {
     ctx.answerCbQuery().catch(() => {});
     try {
