@@ -18,6 +18,9 @@ module.exports = (bot) => {
       const admin = await checkAdmin(ctx.from.id);
       if (!admin || !admin.isActive) return ctx.reply('❌ Unauthorized access.');
 
+      // Clear any previous stuck sessions when opening admin panel fresh
+      ctx.session = {};
+
       const adminPanelText = `🛠️ <b>HACKER ADMIN CONTROL PANEL</b>\n✦━━━━━━━━━━━━━━━━━━━━✦\nSelect an option below to manage products, maintenance, settings, or search user orders:`;
 
       const adminButtons = Markup.inlineKeyboard([
@@ -33,6 +36,15 @@ module.exports = (bot) => {
       logger.error('Admin panel error:', error);
       ctx.reply('❌ Error loading admin panel.');
     }
+  });
+
+  // 🛑 /cancel - Clear any active session to prevent freezing
+  bot.command('cancel', async (ctx) => {
+    const admin = await checkAdmin(ctx.from.id);
+    if (!admin || !admin.isActive) return;
+
+    ctx.session = {};
+    await ctx.reply('✅ Active action cancelled and session cleared. Type /admin to go back.');
   });
 
   // 📦 Product List & PID Management Menu
@@ -102,8 +114,9 @@ module.exports = (bot) => {
     const productId = parseInt(ctx.match[1]);
     ctx.session = ctx.session || {};
     ctx.session.awaitingPidForProduct = productId;
+    ctx.session.sessionTime = Date.now(); // Track time to prevent stale session bugs
 
-    await ctx.reply('💬 Send the new Panel PID value for this product (e.g. `/setpid <pid_number>` or just text):');
+    await ctx.reply('💬 Send the new Panel PID value for this product:\n(Or type /cancel to abort)');
   });
 
   // 🔍 User Search Prompt Action
@@ -217,8 +230,9 @@ module.exports = (bot) => {
 
     ctx.session = ctx.session || {};
     ctx.session.awaitingNewAdminPassword = true;
+    ctx.session.sessionTime = Date.now();
 
-    await ctx.reply('💬 Send the new password you want to set for your Admin account:');
+    await ctx.reply('💬 Send the new password you want to set for your Admin account:\n(Or type /cancel to abort)');
   });
 
   // Command to update dynamic settings like APK link or Support Channel
@@ -249,6 +263,7 @@ module.exports = (bot) => {
     const admin = await checkAdmin(ctx.from.id);
     if (!admin || !admin.isActive) return;
 
+    ctx.session = {}; // Clear session on going home
     const adminPanelText = `🛠️ <b>HACKER ADMIN CONTROL PANEL</b>\n✦━━━━━━━━━━━━━━━━━━━━✦\nSelect an option below:`;
     const adminButtons = Markup.inlineKeyboard([
       [Markup.button.callback('📦 Manage Products & PIDs', 'adm_products')],
@@ -275,8 +290,9 @@ module.exports = (bot) => {
 
       ctx.session = ctx.session || {};
       ctx.session.awaitingKeyForOrder = orderId;
+      ctx.session.sessionTime = Date.now();
       
-      await ctx.reply(`🔐 Enter key to deliver:\n(Order: ${orderId.slice(0,8)})`);
+      await ctx.reply(`🔐 Enter key to deliver:\n(Order: ${orderId.slice(0,8)})\n(Type /cancel to abort)`);
     } catch (error) {
       logger.error('Approve error:', error);
       await ctx.answerCbQuery('❌ Error.');
@@ -313,6 +329,12 @@ module.exports = (bot) => {
 
       ctx.session = ctx.session || {};
 
+      // Safeguard: If session is older than 15 minutes, auto-expire it to prevent ghost states
+      if (ctx.session.sessionTime && (Date.now() - ctx.session.sessionTime > 15 * 60 * 1000)) {
+        ctx.session = {};
+        return next();
+      }
+
       // 0. Handling Admin Password Change Session
       if (ctx.session.awaitingNewAdminPassword) {
         delete ctx.session.awaitingNewAdminPassword;
@@ -322,7 +344,6 @@ module.exports = (bot) => {
           return ctx.reply('❌ Password cannot be empty.');
         }
 
-        // Hash the new password using bcrypt
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(newPlainPassword, salt);
 
@@ -378,7 +399,6 @@ module.exports = (bot) => {
           include: { user: true, product: true, plan: true },
         });
 
-        // Fetch dynamic system settings like channel link if configured
         const supportChannelSetting = await prisma.systemSetting.findUnique({ where: { key: 'SUPPORT_CHANNEL_LINK' } });
         let channelPrompt = '';
         if (supportChannelSetting && supportChannelSetting.value) {
