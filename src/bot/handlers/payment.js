@@ -100,8 +100,9 @@ module.exports = (bot) => {
         return ctx.reply('❌ Order not found or unauthorized.');
       }
 
-      if (order.paymentStatus === 'SUCCESS') {
-        return ctx.reply('✅ Payment already verified.');
+      // 🔒 Prevent double verification/delivery if already completed
+      if (order.paymentStatus === 'SUCCESS' || order.deliveryStatus === 'DELIVERED') {
+        return ctx.reply('✅ Payment is already verified and key has been delivered.');
       }
 
       if (['CANCELLED', 'EXPIRED'].includes(order.status)) {
@@ -134,7 +135,7 @@ module.exports = (bot) => {
           const apiParams = new URLSearchParams({
             api_key: process.env.PANEL_API_KEY,
             action: 'buy',
-            product_id: order.product.panelProductId || order.product.id, // Ensure your product model has panelProductId or mapped ID
+            product_id: order.product.panelProductId || order.product.id,
             duration: order.plan.durationLabel,
           });
 
@@ -148,9 +149,17 @@ module.exports = (bot) => {
 
           const panelData = panelResponse.data;
           
-          // Assuming the panel returns the key in data (adjust key field name if panel returns JSON like {status: true, key: 'XYZ'} or raw string)
           if (panelData) {
-            licenseKeyText = typeof panelData === 'object' ? (panelData.key || panelData.license || JSON.stringify(panelData)) : panelData;
+            if (typeof panelData === 'object') {
+              // Handle panel error responses gracefully
+              if (panelData.status === false || panelData.error || panelData.msg) {
+                licenseKeyText = `⚠️ Panel Error: ${panelData.error || panelData.msg || JSON.stringify(panelData)}`;
+              } else {
+                licenseKeyText = panelData.key || panelData.license || JSON.stringify(panelData);
+              }
+            } else {
+              licenseKeyText = panelData;
+            }
           }
         } catch (apiErr) {
           logger.error('Panel API automatic key generation error:', apiErr);
