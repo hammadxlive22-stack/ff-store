@@ -1,6 +1,7 @@
 const { Markup } = require('telegraf');
 const prisma = require('../../services/db');
 const logger = require('../../utils/logger');
+const bcrypt = require('bcryptjs'); // Make sure bcryptjs is installed in your package.json
 
 // Helper to check if user is admin
 async function checkAdmin(telegramId) {
@@ -23,7 +24,8 @@ module.exports = (bot) => {
         [Markup.button.callback('📦 Manage Products & PIDs', 'adm_products')],
         [Markup.button.callback('🔍 Search User by Telegram ID', 'adm_search_prompt')],
         [Markup.button.callback('📊 Live Key Delivery Logs', 'adm_logs')],
-        [Markup.button.callback('⚙️ Setup APK & Channel Links', 'adm_settings')]
+        [Markup.button.callback('⚙️ Setup APK & Channel Links', 'adm_settings')],
+        [Markup.button.callback('🔑 Change Admin Password', 'adm_change_pass')]
       ]);
 
       await ctx.replyWithHTML(adminPanelText, adminButtons);
@@ -207,6 +209,18 @@ module.exports = (bot) => {
     });
   });
 
+  // 🔑 Change Admin Password Trigger Action
+  bot.action('adm_change_pass', async (ctx) => {
+    ctx.answerCbQuery().catch(() => {});
+    const admin = await checkAdmin(ctx.from.id);
+    if (!admin || !admin.isActive) return;
+
+    ctx.session = ctx.session || {};
+    ctx.session.awaitingNewAdminPassword = true;
+
+    await ctx.reply('💬 Send the new password you want to set for your Admin account:');
+  });
+
   // Command to update dynamic settings like APK link or Support Channel
   bot.command('setsetting', async (ctx) => {
     const admin = await checkAdmin(ctx.from.id);
@@ -240,7 +254,8 @@ module.exports = (bot) => {
       [Markup.button.callback('📦 Manage Products & PIDs', 'adm_products')],
       [Markup.button.callback('🔍 Search User by Telegram ID', 'adm_search_prompt')],
       [Markup.button.callback('📊 Live Key Delivery Logs', 'adm_logs')],
-      [Markup.button.callback('⚙️ Setup APK & Channel Links', 'adm_settings')]
+      [Markup.button.callback('⚙️ Setup APK & Channel Links', 'adm_settings')],
+      [Markup.button.callback('🔑 Change Admin Password', 'adm_change_pass')]
     ]);
 
     await ctx.editMessageText(adminPanelText, adminButtons);
@@ -290,13 +305,38 @@ module.exports = (bot) => {
     }
   });
 
-  // Text Handler for Sessions (PID updates & Manual Key Deliveries)
+  // Text Handler for Sessions (PID updates, Password Change & Manual Key Deliveries)
   bot.on('text', async (ctx, next) => {
     try {
       const admin = await checkAdmin(ctx.from.id);
       if (!admin || !admin.isActive) return next();
 
       ctx.session = ctx.session || {};
+
+      // 0. Handling Admin Password Change Session
+      if (ctx.session.awaitingNewAdminPassword) {
+        delete ctx.session.awaitingNewAdminPassword;
+
+        const newPlainPassword = ctx.message.text.trim();
+        if (!newPlainPassword) {
+          return ctx.reply('❌ Password cannot be empty.');
+        }
+
+        // Hash the new password using bcrypt
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(newPlainPassword, salt);
+
+        await prisma.admin.update({
+          where: { id: admin.id },
+          data: { password: hashedPassword }
+        });
+
+        await prisma.auditLog.create({
+          data: { adminId: admin.id, action: 'CHANGE_PASSWORD', details: { message: 'Admin password updated successfully' } },
+        });
+
+        return ctx.reply('✅ Admin password updated successfully! Keep your new password secure.', { parse_mode: 'HTML' });
+      }
 
       // 1. Handling Product PID Update Session
       if (ctx.session.awaitingPidForProduct) {
