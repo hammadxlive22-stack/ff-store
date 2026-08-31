@@ -17,16 +17,16 @@ module.exports = (bot) => {
         return ctx.reply('❌ No products available.');
       }
 
-      // 🔘 Product selection inline buttons mapped with custom emoji ID
       const inlineKeyboard = products.map((p) => [
         {
           text: p.name,
           callback_data: `product_${p.id}`,
-          icon_custom_emoji_id: '5312361253610475399' // cart/product icon
+          icon_custom_emoji_id: '5312361253610475399'
         }
       ]);
 
-      await ctx.reply('🛒 Select a product:', { reply_markup: { inline_keyboard } });
+      const msgText = `<tg-emoji emoji-id="5312361253610475399">🛒</tg-emoji> <b>SELECT A PRODUCT:</b>\n✦━━━━━━━━━━━━━━━━━━━━✦`;
+      await ctx.replyWithHTML(msgText, { reply_markup: { inline_keyboard } });
     } catch (error) {
       logger.error('Buy handler error:', error);
       ctx.reply('❌ An error occurred.').catch(() => {});
@@ -45,12 +45,11 @@ module.exports = (bot) => {
 
       if (!product) return ctx.reply('❌ Product not found.');
 
-      // 🔘 Plan duration selection buttons mapped with clock icon & Back button
       const inlineKeyboard = product.plans.map((plan) => [
         {
           text: `${plan.durationLabel} — ₹${plan.price}`,
           callback_data: `plan_${plan.id}`,
-          icon_custom_emoji_id: '5463071033256848094' // clock/duration icon
+          icon_custom_emoji_id: '5463071033256848094'
         }
       ]);
       
@@ -58,13 +57,12 @@ module.exports = (bot) => {
         {
           text: 'Back',
           callback_data: 'buy_now',
-          icon_custom_emoji_id: '5971867376130461576' // back arrow icon
+          icon_custom_emoji_id: '5971867376130461576'
         }
       ]);
 
-      await ctx.reply(`📦 ${product.name}\n${product.description || ''}\n\nSelect duration:`, {
-        reply_markup: { inline_keyboard }
-      });
+      const msgText = `<tg-emoji emoji-id="5463071033256848094">📦</tg-emoji> <b>${product.name}</b>\n${product.description || ''}\n\nSelect duration:`;
+      await ctx.replyWithHTML(msgText, { reply_markup: { inline_keyboard } });
     } catch (error) {
       logger.error('Product handler error:', error);
       ctx.reply('❌ An error occurred.').catch(() => {});
@@ -83,22 +81,21 @@ module.exports = (bot) => {
 
       if (!plan) return ctx.reply('❌ Plan not found.');
 
-      const text = `🛒 ORDER SUMMARY\n✦━━━━━━━━━━━━━━━━✦\n\n📦 Product: ${plan.product.name}\n⏱️ Plan: ${plan.durationLabel}\n💰 Price: ₹${plan.price}`;
+      const text = `<tg-emoji emoji-id="5312361253610475399">🛒</tg-emoji> <b>ORDER SUMMARY</b>\n✦━━━━━━━━━━━━━━━━✦\n\n📦 Product: ${plan.product.name}\n⏱️ Plan: ${plan.durationLabel}\n💰 Price: ₹${plan.price}`;
 
-      // 🔘 Order summary buttons configured with payment and back custom emoji IDs
       const inlineKeyboard = [
         [
           {
             text: `Pay ₹${plan.price} via UPI`,
             callback_data: `pay_${plan.id}`,
-            icon_custom_emoji_id: '5895735846698487922' // payment / link icon
+            icon_custom_emoji_id: '5895735846698487922'
           }
         ],
         [
           {
             text: 'Back',
             callback_data: `product_${plan.product.id}`,
-            icon_custom_emoji_id: '5971867376130461576' // back arrow icon
+            icon_custom_emoji_id: '5971867376130461576'
           }
         ]
       ];
