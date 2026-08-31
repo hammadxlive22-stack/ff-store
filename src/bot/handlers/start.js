@@ -23,8 +23,8 @@ module.exports = (bot) => {
 
       const welcomeText = `'flex' <b>FF STORE</b> 'motion'\n✦━━━━━━━━━━━━━━━━✦\n\n'sigma' Welcome to FF STORE\n'top' Buy authorized digital products\n'dollar' Secure UPI payments\n'stars' Fast payment verification\n'verified' Admin-approved delivery`;
 
-      // Inline keyboard buttons with icon_custom_emoji_id mapped directly to raw JSON structure
-      const inlineKeyboard = [
+      // Safe inline keyboard mapping using Markup helper to avoid scope/naming reference errors
+      const menu = Markup.inlineKeyboard([
         [
           { text: 'Buy Now', callback_data: 'buy_now', icon_custom_emoji_id: '5312361253610475399' }
         ],
@@ -39,17 +39,17 @@ module.exports = (bot) => {
           { text: 'Payment History', callback_data: 'payment_history', icon_custom_emoji_id: '5895735846698487922' },
           { text: 'Support', callback_data: 'support', icon_custom_emoji_id: '6235307467337635626' }
         ]
-      ];
+      ]);
 
       // Step 1: Try with Custom Animated Emojis
       try {
         const customHtml = await formatToHTML(welcomeText, true);
-        await ctx.replyWithHTML(customHtml, { reply_markup: { inline_keyboard } });
+        await ctx.replyWithHTML(customHtml, menu);
       } catch (telegramError) {
         // Step 2: Fallback if IDs are invalid on Telegram's side
         logger.warn('Custom Emoji failed, falling back to standard HTML:', telegramError.message);
         const plainHtml = await formatToHTML(welcomeText, false);
-        await ctx.replyWithHTML(plainHtml, { reply_markup: { inline_keyboard } });
+        await ctx.replyWithHTML(plainHtml, menu);
       }
 
     } catch (error) {
