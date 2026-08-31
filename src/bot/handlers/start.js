@@ -21,26 +21,35 @@ module.exports = (bot) => {
         },
       });
 
-      // ✅ Custom emojis added inside single quotes here:
       const welcomeText = `'flex' <b>FF STORE</b> 'motion'\n✦━━━━━━━━━━━━━━━━✦\n\n'sigma' Welcome to FF STORE\n'top' Buy authorized digital products\n'dollar' Secure UPI payments\n'stars' Fast payment verification\n'verified' Admin-approved delivery`;
 
-
-      const menu = Markup.inlineKeyboard([
-        [Markup.button.callback('🛒 Buy Now', 'buy_now')],
-        [Markup.button.callback('💰 Add Balance', 'add_balance'), Markup.button.callback('👤 My Profile', 'my_profile')],
-        [Markup.button.callback('📦 My Orders', 'my_orders')],
-        [Markup.button.callback('🧾 Payment History', 'payment_history'), Markup.button.callback('🆘 Support', 'support')],
-      ]);
+      // Inline keyboard buttons with icon_custom_emoji_id mapped directly to raw JSON structure
+      const inlineKeyboard = [
+        [
+          { text: 'Buy Now', callback_data: 'buy_now', icon_custom_emoji_id: '5312361253610475399' }
+        ],
+        [
+          { text: 'Add Balance', callback_data: 'add_balance', icon_custom_emoji_id: '6235459831302460476' },
+          { text: 'My Profile', callback_data: 'my_profile', icon_custom_emoji_id: '5317006024517912643' }
+        ],
+        [
+          { text: 'My Orders', callback_data: 'my_orders', icon_custom_emoji_id: '5463071033256848094' }
+        ],
+        [
+          { text: 'Payment History', callback_data: 'payment_history', icon_custom_emoji_id: '5895735846698487922' },
+          { text: 'Support', callback_data: 'support', icon_custom_emoji_id: '6235307467337635626' }
+        ]
+      ];
 
       // Step 1: Try with Custom Animated Emojis
       try {
         const customHtml = await formatToHTML(welcomeText, true);
-        await ctx.replyWithHTML(customHtml, menu);
+        await ctx.replyWithHTML(customHtml, { reply_markup: { inline_keyboard } });
       } catch (telegramError) {
         // Step 2: Fallback if IDs are invalid on Telegram's side
         logger.warn('Custom Emoji failed, falling back to standard HTML:', telegramError.message);
         const plainHtml = await formatToHTML(welcomeText, false);
-        await ctx.replyWithHTML(plainHtml, menu);
+        await ctx.replyWithHTML(plainHtml, { reply_markup: { inline_keyboard } });
       }
 
     } catch (error) {
