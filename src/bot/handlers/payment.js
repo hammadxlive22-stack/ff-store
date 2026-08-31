@@ -59,11 +59,34 @@ module.exports = (bot) => {
 
       const textMsg = `💳 <b>PAYMENT CREATED</b>\n✦━━━━━━━━━━━━━━━━✦\n\n📦 Product: ${plan.product.name}\n⏱️ Plan: ${plan.durationLabel}\n💰 Amount: ₹${plan.price}\n🧾 Order ID: <code>${order.id.slice(0, 8)}</code>\n\n🔗 <b>UPI Link:</b>\n<code>${famResponse.qr_text}</code>\n\n👇 Scan this QR or use buttons below to pay:`;
 
-      const buttons = Markup.inlineKeyboard([
-        [Markup.button.url('🔗 Pay via Link', famResponse.payment_url || famResponse.qr_text)],
-        [Markup.button.callback('✅ I Have Paid', `paid_${order.id}`)],
-        [Markup.button.callback('❌ Cancel Order', `cancel_${order.id}`)],
-      ]);
+      // 🔘 Inline Buttons configured with Custom Emoji IDs for Telegram Premium Owners
+      const buttons = {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: 'Pay via Link',
+                url: famResponse.payment_url || famResponse.qr_text,
+                icon_custom_emoji_id: '5895735846698487922' // telegram/link icon
+              }
+            ],
+            [
+              {
+                text: 'I Have Paid',
+                callback_data: `paid_${order.id}`,
+                icon_custom_emoji_id: '6147565374289220368' // verified / check icon
+              }
+            ],
+            [
+              {
+                text: 'Cancel Order',
+                callback_data: `cancel_${order.id}`,
+                icon_custom_emoji_id: '6273840152980755328' // crying / cross icon
+              }
+            ]
+          ]
+        }
+      };
 
       const qrImageUrl = famResponse.qr_image || `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(famResponse.qr_text)}`;
 
