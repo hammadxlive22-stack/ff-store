@@ -20,13 +20,13 @@ module.exports = (bot) => {
         .reduce((sum, o) => sum + parseFloat(o.amount), 0);
 
       await ctx.replyWithHTML(
-        `👤 PROFILE\n✦━━━━━━━━━━━━━━━━✦\n\n` +
+        `<tg-emoji emoji-id="5317006024517912643">👤</tg-emoji> <b>PROFILE</b>\n✦━━━━━━━━━━━━━━━━✦\n\n` +
         `Name: ${user.firstName || 'N/A'} ${user.lastName || ''}\n` +
         `Username: @${user.username || 'N/A'}\n` +
         `Telegram ID: ${user.telegramId}\n\n` +
-        `📦 Total Orders: ${totalOrders}\n` +
-        `✅ Completed: ${completedOrders}\n` +
-        `💰 Total Spent: ₹${totalSpent}`
+        `<tg-emoji emoji-id="5463071033256848094">📦</tg-emoji> Total Orders: ${totalOrders}\n` +
+        `<tg-emoji emoji-id="5312361253610475399">✅</tg-emoji> Completed: ${completedOrders}\n` +
+        `<tg-emoji emoji-id="5895735846698487922">💰</tg-emoji> Total Spent: ₹${totalSpent}`
       );
     } catch (error) {
       logger.error('Profile error:', error);
@@ -54,10 +54,10 @@ module.exports = (bot) => {
       }
 
       const orderList = user.orders.map(o => 
-        `🧾 ${o.product.name} - ${o.plan.durationLabel}\n💰 ₹${o.amount} | ${o.status}\nID: <code>${o.id.slice(0,8)}</code>`
+        `<tg-emoji emoji-id="5312361253610475399">🧾</tg-emoji> ${o.product.name} - ${o.plan.durationLabel}\n<tg-emoji emoji-id="5895735846698487922">💰</tg-emoji> ₹${o.amount} | ${o.status}\nID: <code>${o.id.slice(0,8)}</code>`
       ).join('\n\n');
       
-      await ctx.replyWithHTML(`📦 YOUR ORDERS\n\n${orderList}`);
+      await ctx.replyWithHTML(`<tg-emoji emoji-id="5463071033256848094">📦</tg-emoji> <b>YOUR ORDERS</b>\n\n${orderList}`);
     } catch (error) {
       logger.error('Orders error:', error);
       await ctx.answerCbQuery('❌ Error.');
@@ -86,10 +86,10 @@ module.exports = (bot) => {
       const payments = user.orders
         .filter(o => o.payment)
         .map(o => 
-          `💳 ${o.product.name}\n₹${o.amount} | ${o.payment.status}\nDate: ${o.createdAt.toISOString().slice(0,10)}`
+          `<tg-emoji emoji-id="5895735846698487922">💳</tg-emoji> ${o.product.name}\n₹${o.amount} | ${o.payment.status}\nDate: ${o.createdAt.toISOString().slice(0,10)}`
         ).join('\n\n');
       
-      await ctx.reply(`🧾 PAYMENT HISTORY\n\n${payments}`);
+      await ctx.replyWithHTML(`<tg-emoji emoji-id="5895735846698487922">🧾</tg-emoji> <b>PAYMENT HISTORY</b>\n\n${payments}`);
     } catch (error) {
       logger.error('History error:', error);
       await ctx.answerCbQuery('❌ Error.');
