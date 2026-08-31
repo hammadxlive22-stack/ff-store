@@ -17,16 +17,12 @@ module.exports = (bot) => {
         return ctx.reply('❌ No products available.');
       }
 
-      const inlineKeyboard = products.map((p) => [
-        {
-          text: p.name,
-          callback_data: `product_${p.id}`,
-          icon_custom_emoji_id: '5312361253610475399'
-        }
+      const buttons = products.map((p) => [
+        Markup.button.callback(p.name, `product_${p.id}`)
       ]);
 
       const msgText = `<tg-emoji emoji-id="5312361253610475399">🛒</tg-emoji> <b>SELECT A PRODUCT:</b>\n✦━━━━━━━━━━━━━━━━━━━━✦`;
-      await ctx.replyWithHTML(msgText, { reply_markup: { inline_keyboard } });
+      await ctx.replyWithHTML(msgText, Markup.inlineKeyboard(buttons));
     } catch (error) {
       logger.error('Buy handler error:', error);
       ctx.reply('❌ An error occurred.').catch(() => {});
@@ -45,24 +41,14 @@ module.exports = (bot) => {
 
       if (!product) return ctx.reply('❌ Product not found.');
 
-      const inlineKeyboard = product.plans.map((plan) => [
-        {
-          text: `${plan.durationLabel} — ₹${plan.price}`,
-          callback_data: `plan_${plan.id}`,
-          icon_custom_emoji_id: '5463071033256848094'
-        }
+      const planButtons = product.plans.map((plan) => [
+        Markup.button.callback(`${plan.durationLabel} — ₹${plan.price}`, `plan_${plan.id}`)
       ]);
       
-      inlineKeyboard.push([
-        {
-          text: 'Back',
-          callback_data: 'buy_now',
-          icon_custom_emoji_id: '5971867376130461576'
-        }
-      ]);
+      planButtons.push([Markup.button.callback('Back', 'buy_now')]);
 
       const msgText = `<tg-emoji emoji-id="5463071033256848094">📦</tg-emoji> <b>${product.name}</b>\n${product.description || ''}\n\nSelect duration:`;
-      await ctx.replyWithHTML(msgText, { reply_markup: { inline_keyboard } });
+      await ctx.replyWithHTML(msgText, Markup.inlineKeyboard(planButtons));
     } catch (error) {
       logger.error('Product handler error:', error);
       ctx.reply('❌ An error occurred.').catch(() => {});
@@ -83,24 +69,12 @@ module.exports = (bot) => {
 
       const text = `<tg-emoji emoji-id="5312361253610475399">🛒</tg-emoji> <b>ORDER SUMMARY</b>\n✦━━━━━━━━━━━━━━━━✦\n\n📦 Product: ${plan.product.name}\n⏱️ Plan: ${plan.durationLabel}\n💰 Price: ₹${plan.price}`;
 
-      const inlineKeyboard = [
-        [
-          {
-            text: `Pay ₹${plan.price} via UPI`,
-            callback_data: `pay_${plan.id}`,
-            icon_custom_emoji_id: '5895735846698487922'
-          }
-        ],
-        [
-          {
-            text: 'Back',
-            callback_data: `product_${plan.product.id}`,
-            icon_custom_emoji_id: '5971867376130461576'
-          }
-        ]
-      ];
+      const buttons = Markup.inlineKeyboard([
+        [Markup.button.callback(`Pay ₹${plan.price} via UPI`, `pay_${plan.id}`)],
+        [Markup.button.callback('Back', `product_${plan.product.id}`)],
+      ]);
 
-      await ctx.replyWithHTML(text, { reply_markup: { inline_keyboard } });
+      await ctx.replyWithHTML(text, buttons);
     } catch (error) {
       logger.error('Plan handler error:', error);
       ctx.reply('❌ An error occurred.').catch(() => {});
