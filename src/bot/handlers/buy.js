@@ -17,8 +17,16 @@ module.exports = (bot) => {
         return ctx.reply('❌ No products available.');
       }
 
-      const buttons = products.map((p) => [Markup.button.callback(p.name, `product_${p.id}`)]);
-      await ctx.reply('🛒 Select a product:', Markup.inlineKeyboard(buttons));
+      // 🔘 Product selection inline buttons mapped with custom emoji ID
+      const inlineKeyboard = products.map((p) => [
+        {
+          text: p.name,
+          callback_data: `product_${p.id}`,
+          icon_custom_emoji_id: '5312361253610475399' // cart/product icon
+        }
+      ]);
+
+      await ctx.reply('🛒 Select a product:', { reply_markup: { inline_keyboard } });
     } catch (error) {
       logger.error('Buy handler error:', error);
       ctx.reply('❌ An error occurred.').catch(() => {});
@@ -37,13 +45,26 @@ module.exports = (bot) => {
 
       if (!product) return ctx.reply('❌ Product not found.');
 
-      const planButtons = product.plans.map((plan) =>
-        [Markup.button.callback(`⏱️ ${plan.durationLabel} — ₹${plan.price}`, `plan_${plan.id}`)]
-      );
-      planButtons.push([Markup.button.callback('🔙 Back', 'buy_now')]);
+      // 🔘 Plan duration selection buttons mapped with clock icon & Back button
+      const inlineKeyboard = product.plans.map((plan) => [
+        {
+          text: `${plan.durationLabel} — ₹${plan.price}`,
+          callback_data: `plan_${plan.id}`,
+          icon_custom_emoji_id: '5463071033256848094' // clock/duration icon
+        }
+      ]);
+      
+      inlineKeyboard.push([
+        {
+          text: 'Back',
+          callback_data: 'buy_now',
+          icon_custom_emoji_id: '5971867376130461576' // back arrow icon
+        }
+      ]);
 
-      await ctx.reply(`📦 ${product.name}\n${product.description || ''}\n\nSelect duration:`, 
-        Markup.inlineKeyboard(planButtons));
+      await ctx.reply(`📦 ${product.name}\n${product.description || ''}\n\nSelect duration:`, {
+        reply_markup: { inline_keyboard }
+      });
     } catch (error) {
       logger.error('Product handler error:', error);
       ctx.reply('❌ An error occurred.').catch(() => {});
@@ -64,12 +85,25 @@ module.exports = (bot) => {
 
       const text = `🛒 ORDER SUMMARY\n✦━━━━━━━━━━━━━━━━✦\n\n📦 Product: ${plan.product.name}\n⏱️ Plan: ${plan.durationLabel}\n💰 Price: ₹${plan.price}`;
 
-      const buttons = Markup.inlineKeyboard([
-        [Markup.button.callback(`💳 Pay ₹${plan.price} via UPI`, `pay_${plan.id}`)],
-        [Markup.button.callback('🔙 Back', `product_${plan.product.id}`)],
-      ]);
+      // 🔘 Order summary buttons configured with payment and back custom emoji IDs
+      const inlineKeyboard = [
+        [
+          {
+            text: `Pay ₹${plan.price} via UPI`,
+            callback_data: `pay_${plan.id}`,
+            icon_custom_emoji_id: '5895735846698487922' // payment / link icon
+          }
+        ],
+        [
+          {
+            text: 'Back',
+            callback_data: `product_${plan.product.id}`,
+            icon_custom_emoji_id: '5971867376130461576' // back arrow icon
+          }
+        ]
+      ];
 
-      await ctx.replyWithHTML(text, buttons);
+      await ctx.replyWithHTML(text, { reply_markup: { inline_keyboard } });
     } catch (error) {
       logger.error('Plan handler error:', error);
       ctx.reply('❌ An error occurred.').catch(() => {});
