@@ -23,13 +23,48 @@ module.exports = (bot) => {
 
       const adminPanelText = `🛠️ <b>HACKER ADMIN CONTROL PANEL</b>\n✦━━━━━━━━━━━━━━━━━━━━✦\nSelect an option below to manage products, maintenance, settings, or search user orders:`;
 
-      const adminButtons = Markup.inlineKeyboard([
-        [Markup.button.callback('📦 Manage Products & PIDs', 'adm_products')],
-        [Markup.button.callback('🔍 Search User by Telegram ID', 'adm_search_prompt')],
-        [Markup.button.callback('📊 Live Key Delivery Logs', 'adm_logs')],
-        [Markup.button.callback('⚙️ Setup APK & Channel Links', 'adm_settings')],
-        [Markup.button.callback('🔑 Change Admin Password', 'adm_change_pass')]
-      ]);
+      // 🔘 Inline Buttons configured with Custom Emoji IDs for Telegram Premium Owners
+      const adminButtons = {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: 'Manage Products & PIDs',
+                callback_data: 'adm_products',
+                icon_custom_emoji_id: '5312361253610475399' // cart/product icon
+              }
+            ],
+            [
+              {
+                text: 'Search User by Telegram ID',
+                callback_data: 'adm_search_prompt',
+                icon_custom_emoji_id: '5317006024517912643' // profile/search icon
+              }
+            ],
+            [
+              {
+                text: 'Live Key Delivery Logs',
+                callback_data: 'adm_logs',
+                icon_custom_emoji_id: '5463071033256848094' // top/chart icon
+              }
+            ],
+            [
+              {
+                text: 'Setup APK & Channel Links',
+                callback_data: 'adm_settings',
+                icon_custom_emoji_id: '6235307467337635626' // settings/top icon
+              }
+            ],
+            [
+              {
+                text: 'Change Admin Password',
+                callback_data: 'adm_change_pass',
+                icon_custom_emoji_id: '5465443379917629504' // lock icon
+              }
+            ]
+          ]
+        }
+      };
 
       await ctx.replyWithHTML(adminPanelText, adminButtons);
     } catch (error) {
@@ -56,19 +91,33 @@ module.exports = (bot) => {
     const products = await prisma.product.findMany({ include: { plans: true } });
     
     let text = `📦 <b>PRODUCT & PID MANAGEMENT</b>\n✦━━━━━━━━━━━━━━━━━━━━✦\n`;
-    const rows = [];
+    const inlineKeyboard = [];
 
     products.forEach((p, idx) => {
       text += `\n<b>${idx + 1}. ${p.name}</b>\n🆔 Panel PID: <code>${p.panelProductId || 'Not Set'}</code>\n🔧 Status: ${p.isMaintenance ? '⚠️ Under Maintenance' : '🟢 Active'}\n`;
-      rows.push([
-        Markup.button.callback(`✏️ PID: ${p.name}`, `edit_pid_${p.id}`),
-        Markup.button.callback(`${p.isMaintenance ? '🟢 Resume' : '⚠️ Maint'}`, `toggle_maint_${p.id}`)
+      inlineKeyboard.push([
+        {
+          text: `PID: ${p.name}`,
+          callback_data: `edit_pid_${p.id}`,
+          icon_custom_emoji_id: '6235459831302460476' // money/edit icon
+        },
+        {
+          text: p.isMaintenance ? 'Resume' : 'Maint',
+          callback_data: `toggle_maint_${p.id}`,
+          icon_custom_emoji_id: p.isMaintenance ? '6147460667281511517' : '6273840152980755328' // done or warning icon
+        }
       ]);
     });
 
-    rows.push([Markup.button.callback('« Back to Admin Menu', 'adm_home')]);
+    inlineKeyboard.push([
+      {
+        text: '« Back to Admin Menu',
+        callback_data: 'adm_home',
+        icon_custom_emoji_id: '5971867376130461576' // down/back arrow
+      }
+    ]);
 
-    await ctx.editMessageText(text, { parse_mode: 'HTML', ...Markup.inlineKeyboard(rows) });
+    await ctx.editMessageText(text, { parse_mode: 'HTML', reply_markup: { inline_keyboard } });
   });
 
   // 🛠️ Maintenance Mode Toggle Handler
@@ -91,18 +140,32 @@ module.exports = (bot) => {
     // Refresh products view
     const products = await prisma.product.findMany({ include: { plans: true } });
     let text = `📦 <b>PRODUCT & PID MANAGEMENT</b>\n✦━━━━━━━━━━━━━━━━━━━━✦\n`;
-    const rows = [];
+    const inlineKeyboard = [];
 
     products.forEach((p, idx) => {
       text += `\n<b>${idx + 1}. ${p.name}</b>\n🆔 Panel PID: <code>${p.panelProductId || 'Not Set'}</code>\n🔧 Status: ${p.isMaintenance ? '⚠️ Under Maintenance' : '🟢 Active'}\n`;
-      rows.push([
-        Markup.button.callback(`✏️ PID: ${p.name}`, `edit_pid_${p.id}`),
-        Markup.button.callback(`${p.isMaintenance ? '🟢 Resume' : '⚠️ Maint'}`, `toggle_maint_${p.id}`)
+      inlineKeyboard.push([
+        {
+          text: `PID: ${p.name}`,
+          callback_data: `edit_pid_${p.id}`,
+          icon_custom_emoji_id: '6235459831302460476'
+        },
+        {
+          text: p.isMaintenance ? 'Resume' : 'Maint',
+          callback_data: `toggle_maint_${p.id}`,
+          icon_custom_emoji_id: p.isMaintenance ? '6147460667281511517' : '6273840152980755328'
+        }
       ]);
     });
-    rows.push([Markup.button.callback('« Back to Admin Menu', 'adm_home')]);
+    inlineKeyboard.push([
+      {
+        text: '« Back to Admin Menu',
+        callback_data: 'adm_home',
+        icon_custom_emoji_id: '5971867376130461576'
+      }
+    ]);
 
-    await ctx.editMessageText(text, { parse_mode: 'HTML', ...Markup.inlineKeyboard(rows) });
+    await ctx.editMessageText(text, { parse_mode: 'HTML', reply_markup: { inline_keyboard } });
   });
 
   // ✏️ Edit PID Prompt handler
@@ -194,7 +257,15 @@ module.exports = (bot) => {
 
     await ctx.editMessageText(logText, {
       parse_mode: 'HTML',
-      ...Markup.inlineKeyboard([[Markup.button.callback('« Back', 'adm_home')]])
+      reply_markup: {
+        inline_keyboard: [[
+          {
+            text: '« Back',
+            callback_data: 'adm_home',
+            icon_custom_emoji_id: '5971867376130461576'
+          }
+        ]]
+      }
     });
   });
 
@@ -218,7 +289,15 @@ module.exports = (bot) => {
 
     await ctx.editMessageText(text, {
       parse_mode: 'HTML',
-      ...Markup.inlineKeyboard([[Markup.button.callback('« Back', 'adm_home')]])
+      reply_markup: {
+        inline_keyboard: [[
+          {
+            text: '« Back',
+            callback_data: 'adm_home',
+            icon_custom_emoji_id: '5971867376130461576'
+          }
+        ]]
+      }
     });
   });
 
@@ -265,13 +344,47 @@ module.exports = (bot) => {
 
     ctx.session = {}; // Clear session on going home
     const adminPanelText = `🛠️ <b>HACKER ADMIN CONTROL PANEL</b>\n✦━━━━━━━━━━━━━━━━━━━━✦\nSelect an option below:`;
-    const adminButtons = Markup.inlineKeyboard([
-      [Markup.button.callback('📦 Manage Products & PIDs', 'adm_products')],
-      [Markup.button.callback('🔍 Search User by Telegram ID', 'adm_search_prompt')],
-      [Markup.button.callback('📊 Live Key Delivery Logs', 'adm_logs')],
-      [Markup.button.callback('⚙️ Setup APK & Channel Links', 'adm_settings')],
-      [Markup.button.callback('🔑 Change Admin Password', 'adm_change_pass')]
-    ]);
+    const adminButtons = {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: 'Manage Products & PIDs',
+              callback_data: 'adm_products',
+              icon_custom_emoji_id: '5312361253610475399'
+            }
+          ],
+          [
+            {
+              text: 'Search User by Telegram ID',
+              callback_data: 'adm_search_prompt',
+              icon_custom_emoji_id: '5317006024517912643'
+            }
+          ],
+          [
+            {
+              text: 'Live Key Delivery Logs',
+              callback_data: 'adm_logs',
+              icon_custom_emoji_id: '5463071033256848094'
+            }
+          ],
+          [
+            {
+              text: 'Setup APK & Channel Links',
+              callback_data: 'adm_settings',
+              icon_custom_emoji_id: '6235307467337635626'
+            }
+          ],
+          [
+            {
+              text: 'Change Admin Password',
+              callback_data: 'adm_change_pass',
+              icon_custom_emoji_id: '5465443379917629504'
+            }
+          ]
+        ]
+      }
+    };
 
     await ctx.editMessageText(adminPanelText, adminButtons);
   });
