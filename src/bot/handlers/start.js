@@ -22,7 +22,8 @@ module.exports = (bot) => {
       });
 
       // ✅ Custom emojis added inside single quotes here:
-      const welcomeText = `'crown' <b>FF STORE</b> 'motion'\n✦━━━━━━━━━━━━━━━━✦\n\n'lightning' Welcome to FF STORE\n'cart' Buy authorized digital products\n'dollar' Secure UPI payments\n'top' Fast payment verification\n'verified' Admin-approved delivery`;
+      const welcomeText = `'flex' <b>FF STORE</b> 'motion'\n✦━━━━━━━━━━━━━━━━✦\n\n'sigma' Welcome to FF STORE\n'top' Buy authorized digital products\n'dollar' Secure UPI payments\n'stars' Fast payment verification\n'verified' Admin-approved delivery`;
+
 
       const menu = Markup.inlineKeyboard([
         [Markup.button.callback('🛒 Buy Now', 'buy_now')],
