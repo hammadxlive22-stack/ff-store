@@ -9,6 +9,7 @@ const path = require('path');
 const bot = require('./bot');
 const prisma = require('./services/db');
 const logger = require('./utils/logger');
+const { formatText } = require('./utils/emojis'); // ✅ Emojis helper imported
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -135,7 +136,17 @@ app.post('/payment/webhook', async (req, res) => {
           });
 
           for (const admin of admins) {
-            const adminMsg = `🔔 NEW PAID ORDER (Webhook)\n\n👤 User: ${order.user.firstName}\n📦 Product: ${order.product.name}\n⏱️ Plan: ${order.plan.durationLabel}\n💰 Amount: ₹${order.amount}\n🧾 Order ID: <code>${order.id.slice(0,8)}</code>\n\nApprove or reject:`;
+            // ✅ Formatted with emojis
+            const adminMsg = formatText(
+              `🔔 <b>NEW PAID ORDER</b> (Webhook) 'verified'\n\n` +
+              `👤 User: ${order.user.firstName}\n` +
+              `📦 Product: ${order.product.name}\n` +
+              `⏱️ Plan: ${order.plan.durationLabel}\n` +
+              `💰 Amount: ₹${order.amount}\n` +
+              `🧾 Order ID: <code>${order.id.slice(0,8)}</code>\n\n` +
+              `'sigma' Approve or reject:`
+            );
+
             const adminButtons = {
               reply_markup: {
                 inline_keyboard: [
@@ -152,10 +163,19 @@ app.post('/payment/webhook', async (req, res) => {
             }).catch((err) => logger.error('Webhook admin notify error:', err));
           }
 
-          // ✅ User को भी notify करो
+          // ✅ User notification with emojis
+          const userMsg = formatText(
+            `✅ <b>Payment Confirmed!</b> 'verified'\n\n` +
+            `📦 Product: ${order.product.name}\n` +
+            `⏱️ Plan: ${order.plan.durationLabel}\n` +
+            `💰 Amount: ₹${order.amount}\n` +
+            `🧾 Order ID: <code>${order.id.slice(0,8)}</code>\n\n` +
+            `'top' Sent to admin for approval 'stars'`
+          );
+
           await bot.telegram.sendMessage(
             order.user.telegramId.toString(),
-            `✅ <b>Payment Confirmed!</b>\n\n📦 Product: ${order.product.name}\n⏱️ Plan: ${order.plan.durationLabel}\n💰 Amount: ₹${order.amount}\n🧾 Order ID: <code>${order.id.slice(0,8)}</code>\n\n👨‍💼 Sent to admin for approval.`,
+            userMsg,
             { parse_mode: 'HTML' }
           ).catch((err) => logger.error('Webhook user notify error:', err));
         }
