@@ -1,50 +1,349 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>FF STORE - Products</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FF STORE - Products Management</title>
   <style>
-    body { font-family: Arial; background: #1a1a2e; color: white; padding: 20px; }
-    h1 { color: #e94560; }
-    form { margin: 20px 0; }
-    input { padding: 10px; margin: 5px; background: #0f3460; border: 1px solid #e94560; color: white; border-radius: 5px; }
-    button { padding: 10px 20px; background: #e94560; color: white; border: none; border-radius: 5px; cursor: pointer; }
-    .product { background: #16213e; padding: 20px; margin: 10px 0; border-radius: 10px; }
-    a { color: #e94560; }
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&display=swap');
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'JetBrains Mono', monospace;
+      background: #030712;
+      background-image: 
+        radial-gradient(circle at 50% 50%, rgba(14, 165, 233, 0.06) 0%, transparent 70%),
+        linear-gradient(rgba(15, 23, 42, 0.4) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(15, 23, 42, 0.4) 1px, transparent 1px);
+      background-size: 100% 100%, 35px 35px, 35px 35px;
+      color: #f8fafc;
+      padding: 30px clamp(15px, 4vw, 50px);
+      min-height: 100vh;
+    }
+
+    /* Scanline effect */
+    body::after {
+      content: " ";
+      display: block;
+      position: fixed;
+      top: 0; left: 0; bottom: 0; right: 0;
+      background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.12) 50%);
+      background-size: 100% 4px;
+      z-index: 99;
+      pointer-events: none;
+    }
+
+    .header-area {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 30px;
+      border-bottom: 1px solid #1e293b;
+      padding-bottom: 20px;
+    }
+
+    h1 {
+      font-size: 24px;
+      font-weight: 800;
+      color: #38bdf8;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      text-shadow: 0 0 12px rgba(56, 189, 248, 0.4);
+    }
+
+    a.back-link {
+      color: #94a3b8;
+      text-decoration: none;
+      font-size: 12px;
+      background: #0f172a;
+      padding: 8px 14px;
+      border-radius: 6px;
+      border: 1px solid #1e293b;
+      transition: all 0.3s ease;
+    }
+
+    a.back-link:hover {
+      color: #38bdf8;
+      border-color: #38bdf8;
+    }
+
+    .add-product-box {
+      background: #090d16;
+      border: 1px solid #1e293b;
+      padding: 25px;
+      border-radius: 12px;
+      margin-bottom: 35px;
+      box-shadow: 0 0 25px rgba(14, 165, 233, 0.1);
+    }
+
+    .add-product-box h3 {
+      font-size: 14px;
+      color: #38bdf8;
+      margin-bottom: 15px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    form {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    input {
+      flex: 1;
+      min-width: 200px;
+      padding: 12px 14px;
+      background: #0f172a;
+      border: 1px solid #1e293b;
+      border-radius: 6px;
+      color: #f1f5f9;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      transition: all 0.3s ease;
+    }
+
+    input:focus {
+      outline: none;
+      border-color: #38bdf8;
+      background: #111e38;
+      box-shadow: 0 0 10px rgba(56, 189, 248, 0.25);
+    }
+
+    button {
+      padding: 12px 20px;
+      background: linear-gradient(135deg, #0ea5e9, #2563eb);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      font-size: 13px;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 15px rgba(14, 165, 233, 0.3);
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(14, 165, 233, 0.5);
+    }
+
+    .product-grid {
+      display: grid;
+      gap: 25px;
+    }
+
+    .product {
+      background: #090d16;
+      border: 1px solid #1e293b;
+      padding: 25px;
+      border-radius: 12px;
+      box-shadow: 0 0 20px rgba(14, 165, 233, 0.08);
+      position: relative;
+    }
+
+    .product-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .product h2 {
+      font-size: 18px;
+      color: #f8fafc;
+      font-weight: 700;
+    }
+
+    .status-badge {
+      font-size: 10px;
+      padding: 4px 10px;
+      border-radius: 4px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .status-active { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid #059669; }
+    .status-inactive { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid #dc2626; }
+
+    .product p {
+      color: #94a3b8;
+      font-size: 13px;
+      margin-bottom: 20px;
+    }
+
+    /* PID & Name Update Form inside Product Card */
+    .update-product-form {
+      background: #0f172a;
+      padding: 15px;
+      border-radius: 8px;
+      border: 1px solid #1e293b;
+      margin-bottom: 20px;
+      display: grid;
+      grid-template-columns: 2fr 2fr 1fr;
+      gap: 10px;
+      align-items: center;
+    }
+
+    @media (max-width: 768px) {
+      .update-product-form { grid-template-columns: 1fr; }
+    }
+
+    .pid-input-group input {
+      border-color: #0ea5e9;
+      color: #38bdf8;
+      font-weight: bold;
+    }
+
+    h3.section-title {
+      font-size: 12px;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      margin-bottom: 10px;
+      border-left: 3px solid #0ea5e9;
+      padding-left: 8px;
+    }
+
+    .plans-list {
+      list-style: none;
+      margin-bottom: 20px;
+    }
+
+    .plan-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #0f172a;
+      padding: 10px 15px;
+      border-radius: 6px;
+      margin-bottom: 8px;
+      border: 1px solid #1e293b;
+      font-size: 13px;
+    }
+
+    .btn-danger {
+      background: rgba(239, 68, 68, 0.15);
+      color: #f87171;
+      border: 1px solid #ef4444;
+      padding: 5px 10px;
+      border-radius: 4px;
+      font-size: 11px;
+      box-shadow: none;
+    }
+
+    .btn-danger:hover {
+      background: #ef4444;
+      color: white;
+      box-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
+    }
+
+    .add-plan-form {
+      background: #0f172a;
+      padding: 15px;
+      border-radius: 8px;
+      border: 1px solid #1e293b;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .btn-success {
+      background: linear-gradient(135deg, #10b981, #059669);
+      box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
+    }
+    .btn-success:hover {
+      box-shadow: 0 6px 20px rgba(16, 185, 129, 0.5);
+    }
   </style>
 </head>
 <body>
-  <h1>📦 Products</h1>
-  <a href="/admin/dashboard">← Back</a>
-  
-  <form method="POST" action="/admin/products">
-    <input name="name" placeholder="Product name" required>
-    <input name="description" placeholder="Description">
-    <button>Add Product</button>
-  </form>
 
-  <% products.forEach(product => { %>
-    <div class="product">
-      <h2><%= product.name %> (<%= product.isActive ? 'Active' : 'Inactive' %>)</h2>
-      <p><%= product.description %></p>
-      
-      <h3>Plans:</h3>
-      <ul>
-        <% product.plans.forEach(plan => { %>
-          <li>
-            <%= plan.durationLabel %> - ₹<%= plan.price %> 
-            (<%= plan.isActive ? 'Active' : 'Inactive' %>)
-          </li>
-        <% }) %>
-      </ul>
-      
-      <h4>Add Plan:</h4>
-      <form method="POST" action="/admin/products/<%= product.id %>/plans">
-        <input name="durationLabel" placeholder="e.g., 1 Hour" required>
-        <input name="durationSeconds" placeholder="3600" type="number" required>
-        <input name="price" placeholder="50" type="number" required>
-        <button>Add Plan</button>
-      </form>
-    </div>
-  <% }) %>
+  <div class="header-area">
+    <h1>📦 Products & PID Control</h1>
+    <a href="/admin/dashboard" class="back-link">← Back to Dashboard</a>
+  </div>
+  
+  <!-- Add New Product Box -->
+  <div class="add-product-box">
+    <h3>⚡ Add New Product</h3>
+    <form method="POST" action="/admin/products">
+      <input name="name" placeholder="Product Name (e.g. Aim Hack)" required autocomplete="off">
+      <input name="description" placeholder="Description" autocomplete="off">
+      <input name="panelProductId" placeholder="Panel Product ID (PID)" autocomplete="off">
+      <button type="submit" class="btn-success">Create Product</button>
+    </form>
+  </div>
+
+  <div class="product-grid">
+    <% products.forEach(product => { %>
+      <div class="product">
+        
+        <div class="product-head">
+          <h2><%= product.name %></h2>
+          <span class="status-badge <%= product.isActive ? 'status-active' : 'status-inactive' %>">
+            <%= product.isActive ? 'Active' : 'Inactive' %>
+          </span>
+        </div>
+
+        <p><%= product.description || 'No description provided.' %></p>
+        
+        <!-- Product Name & PID Update Form -->
+        <form class="update-product-form" method="POST" action="/admin/products/<%= product.id %>/update">
+          <div>
+            <label style="font-size: 10px; color: #64748b; display: block; margin-bottom: 4px;">PRODUCT NAME</label>
+            <input type="text" name="name" value="<%= product.name %>" required>
+          </div>
+          <div class="pid-input-group">
+            <label style="font-size: 10px; color: #38bdf8; display: block; margin-bottom: 4px; font-weight: bold;">PANEL PID</label>
+            <input type="text" name="panelProductId" value="<%= product.panelProductId || '' %>" placeholder="Enter PID">
+          </div>
+          <div style="display: flex; align-items: flex-end;">
+            <button type="submit" style="width: 100%; height: 43px; padding: 0;">Save PID</button>
+          </div>
+        </form>
+
+        <h3 class="section-title">Active Plans & Pricing:</h3>
+        <ul class="plans-list">
+          <% if (product.plans && product.plans.length > 0) { %>
+            <% product.plans.forEach(plan => { %>
+              <li class="plan-item">
+                <span style="color: #e2e8f0;">⚡ <b><%= plan.durationLabel %></b> — ₹<%= plan.price %> 
+                  <span style="font-size: 10px; color: #64748b; margin-left: 8px;">(<%= plan.isActive ? 'Active' : 'Inactive' %>)</span>
+                </span>
+                
+                <!-- Remove/Delete Plan Form -->
+                <form action="/admin/plans/<%= plan.id %>/delete" method="POST" onsubmit="return confirm('Are you sure you want to delete this plan?');" style="margin: 0;">
+                  <button type="submit" class="btn-danger">Remove</button>
+                </form>
+              </li>
+            <% }) %>
+          <% } else { %>
+            <li style="color: #64748b; font-size: 12px; padding: 5px 0;">No plans added yet.</li>
+          <% } %>
+        </ul>
+        
+        <h3 class="section-title">Add Plan:</h3>
+        <form class="add-plan-form" method="POST" action="/admin/products/<%= product.id %>/plans">
+          <input name="durationLabel" placeholder="e.g., 1 Hour / 7 Days" required style="flex: 2;">
+          <input name="durationSeconds" placeholder="Seconds (e.g. 3600)" type="number" value="86400" required style="flex: 1;">
+          <input name="price" placeholder="Price (₹)" type="number" step="0.01" required style="flex: 1;">
+          <button type="submit" class="btn-success" style="flex: 1;">+ Add Plan</button>
+        </form>
+
+      </div>
+    <% }) %>
+  </div>
+
 </body>
 </html>
