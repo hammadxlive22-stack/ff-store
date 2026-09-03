@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const prisma = require('../../services/db');
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
 
 // Middleware to check authentication
 const isAuthenticated = (req, res, next) => {
