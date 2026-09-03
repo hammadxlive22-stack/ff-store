@@ -11,7 +11,7 @@ const isAuthenticated = (req, res, next) => {
   res.redirect('/admin/login');
 };
 
-// GET: View Users with simple search support
+// GET: View Users with simple search support & Total Count
 router.get('/users', isAuthenticated, async (req, res) => {
   try {
     const search = req.query.search || '';
@@ -26,14 +26,18 @@ router.get('/users', isAuthenticated, async (req, res) => {
         } 
       : {};
 
-    const users = await prisma.user.findMany({
-      where: whereCondition,
-      orderBy: {
-        createdAt: 'desc'
-      }
-    });
+    // Parallel execution: Fetch users and total count together for speed
+    const [users, totalUsers] = await Promise.all([
+      prisma.user.findMany({
+        where: whereCondition,
+        orderBy: {
+          createdAt: 'desc'
+        }
+      }),
+      prisma.user.count()
+    ]);
 
-    res.render('users', { users, search });
+    res.render('users', { users, search, totalUsers });
   } catch (error) {
     console.error('Error fetching users:', error);
     res.status(500).send('Server Error');
