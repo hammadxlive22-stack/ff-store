@@ -292,9 +292,15 @@
           
           <div class="product-head">
             <h2><%= product.name %></h2>
-            <span class="status-badge <%= product.isActive ? 'status-active' : 'status-inactive' %>">
-              <%= product.isActive ? 'Active' : 'Inactive' %>
-            </span>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <span class="status-badge <%= product.isActive ? 'status-active' : 'status-inactive' %>">
+                <%= product.isActive ? 'Active' : 'Inactive' %>
+              </span>
+              <!-- Delete Product Button -->
+              <form action="/admin/products/<%= product.id %>/delete" method="POST" onsubmit="return confirm('Are you sure you want to delete this product and its plans?');" style="margin: 0;" class="action-form">
+                <button type="submit" class="btn-danger" style="padding: 5px 10px;">Delete</button>
+              </form>
+            </div>
           </div>
 
           <p><%= product.description || 'No description provided.' %></p>
