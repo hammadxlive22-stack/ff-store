@@ -12,12 +12,21 @@ const isAuthenticated = (req, res, next) => {
 
 router.get('/logs', isAuthenticated, async (req, res) => {
   try {
-    // Agar tere database mein logs table hai toh fetch kar le, nahi toh empty array bhej de
-    const logs = []; 
+    // Database se real logs fetch karega (Last 100 logs)
+    let logs = [];
+    if (prisma.log) {
+      logs = await prisma.log.findMany({
+        orderBy: {
+          createdAt: 'desc'
+        },
+        take: 100
+      });
+    }
     res.render('logs', { logs });
   } catch (error) {
-    console.error('Error fetching logs:', error);
-    res.status(500).send('Server Error');
+    console.error('Error fetching logs from database:', error);
+    // Error aane par bhi page crash nahi hoga, empty logs dikha dega
+    res.render('logs', { logs: [] });
   }
 });
 
