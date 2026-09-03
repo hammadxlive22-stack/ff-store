@@ -10,25 +10,48 @@ const isAuthenticated = (req, res, next) => {
   res.redirect('/admin/login');
 };
 
-// GET: Settings Page
+// GET: Settings Page with Data Fetching
 router.get('/settings', isAuthenticated, async (req, res) => {
   try {
-    // Fetch settings from database or pass default config
-    res.render('settings', { error: null, success: null });
+    let settings = {};
+    if (prisma.setting) {
+      const allSettings = await prisma.setting.findMany();
+      allSettings.forEach(s => settings[s.key] = s.value);
+    }
+    res.render('settings', { error: null, success: null, settings });
   } catch (error) {
     console.error('Error loading settings:', error);
-    res.status(500).send('Server Error');
+    res.render('settings', { error: null, success: null, settings: {} });
   }
 });
 
-// POST: Update Settings
+// POST: Update Settings (Support Link & Notice)
 router.post('/settings', isAuthenticated, async (req, res) => {
   try {
-    // Handle settings update logic here
-    res.redirect('/admin/settings');
+    const { supportUrl, notice } = req.body;
+    
+    if (prisma.setting) {
+      if (supportUrl !== undefined) {
+        await prisma.setting.upsert({
+          where: { key: 'supportUrl' },
+          update: { value: supportUrl },
+          create: { key: 'supportUrl', value: supportUrl }
+        }).catch(() => {});
+      }
+      if (notice !== undefined) {
+        await prisma.setting.upsert({
+          where: { key: 'notice' },
+          update: { value: notice },
+          create: { key: 'notice', value: notice }
+        }).catch(() => {});
+      }
+    }
+
+    const settings = { supportUrl, notice };
+    res.render('settings', { error: null, success: 'Settings updated successfully!', settings });
   } catch (error) {
     console.error('Error updating settings:', error);
-    res.status(500).send('Server Error');
+    res.render('settings', { error: 'Failed to update settings', success: null, settings: {} });
   }
 });
 
