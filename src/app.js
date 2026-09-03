@@ -57,11 +57,16 @@ app.get('/admin', (req, res) => {
   }
 });
 
+// ✅ Admin Routes Mounting (All modules registered to eliminate 404 errors)
 app.use('/admin', require('./admin/routes/auth'));
 app.use('/admin', require('./admin/routes/dashboard'));
 app.use('/admin', require('./admin/routes/products'));
 app.use('/admin', require('./admin/routes/orders'));
 app.use('/admin', require('./admin/routes/emojis'));
+app.use('/admin', require('./admin/routes/users'));
+app.use('/admin', require('./admin/routes/settings'));
+app.use('/admin', require('./admin/routes/logs'));
+app.use('/admin', require('./admin/routes/password'));
 
 // ✅ FamGateway Payment Webhook
 app.post('/payment/webhook', async (req, res) => {
@@ -136,7 +141,6 @@ app.post('/payment/webhook', async (req, res) => {
           });
 
           for (const admin of admins) {
-            // ✅ Formatted with emojis
             const adminMsg = formatText(
               `🔔 <b>NEW PAID ORDER</b> (Webhook) 'verified'\n\n` +
               `👤 User: ${order.user.firstName}\n` +
@@ -163,7 +167,6 @@ app.post('/payment/webhook', async (req, res) => {
             }).catch((err) => logger.error('Webhook admin notify error:', err));
           }
 
-          // ✅ User notification with emojis
           const userMsg = formatText(
             `✅ <b>Payment Confirmed!</b> 'verified'\n\n` +
             `📦 Product: ${order.product.name}\n` +
