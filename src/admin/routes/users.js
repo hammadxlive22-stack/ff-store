@@ -11,16 +11,29 @@ const isAuthenticated = (req, res, next) => {
   res.redirect('/admin/login');
 };
 
-// GET: View Users Management Page
+// GET: View Users with simple search support
 router.get('/users', isAuthenticated, async (req, res) => {
   try {
+    const search = req.query.search || '';
+    
+    // Simple query filter if search term is provided
+    const whereCondition = search 
+      ? { 
+          OR: [
+            { username: { contains: search, mode: 'insensitive' } },
+            { email: { contains: search, mode: 'insensitive' } }
+          ] 
+        } 
+      : {};
+
     const users = await prisma.user.findMany({
+      where: whereCondition,
       orderBy: {
         createdAt: 'desc'
       }
     });
 
-    res.render('users', { users });
+    res.render('users', { users, search });
   } catch (error) {
     console.error('Error fetching users:', error);
     res.status(500).send('Server Error');
