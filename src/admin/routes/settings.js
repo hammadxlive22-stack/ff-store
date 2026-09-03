@@ -25,7 +25,7 @@ router.get('/settings', isAuthenticated, async (req, res) => {
   }
 });
 
-// POST: Update Settings (Support Link & Notice)
+// POST: Update Settings (Support Link & Notice with Action Log)
 router.post('/settings', isAuthenticated, async (req, res) => {
   try {
     const { supportUrl, notice } = req.body;
@@ -46,6 +46,9 @@ router.post('/settings', isAuthenticated, async (req, res) => {
         }).catch(() => {});
       }
     }
+
+    // Console log for tracking admin action on Render terminal
+    console.log(`[SETTINGS UPDATED] Admin ID: ${req.session.adminId} updated settings successfully.`);
 
     const settings = { supportUrl, notice };
     res.render('settings', { error: null, success: 'Settings updated successfully!', settings });
