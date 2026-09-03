@@ -3,187 +3,622 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>FF STORE - Hacker Admin Login</title>
+  <meta name="theme-color" content="#08090d">
+  <title>FF Store / Command Centre</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&display=swap');
-
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
+    :root {
+      --black: #08090d;
+      --ink: #0e1016;
+      --surface: rgba(20, 23, 31, 0.76);
+      --surface-2: rgba(255, 255, 255, 0.045);
+      --white: #f7f8fb;
+      --muted: #858c9c;
+      --orange: #ff9a3d;
+      --orange-2: #ffcb77;
+      --cyan: #7ce4e8;
+      --red: #ff6d65;
+      --border: rgba(255, 255, 255, 0.11);
     }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      font-family: 'JetBrains Mono', monospace;
-      background: #09090e;
-      background-image: 
-        radial-gradient(circle at 50% 50%, rgba(255, 137, 6, 0.05) 0%, transparent 60%),
-        linear-gradient(rgba(15, 14, 23, 0.8) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(15, 14, 23, 0.8) 1px, transparent 1px);
-      background-size: 100% 100%, 30px 30px, 30px 30px;
+      min-height: 100vh;
+      overflow-x: hidden;
+      color: var(--white);
+      background:
+        radial-gradient(ellipse 50% 60% at 73% 42%, rgba(255, 133, 44, 0.12), transparent 70%),
+        radial-gradient(ellipse 38% 50% at 12% 86%, rgba(72, 186, 197, 0.07), transparent 70%),
+        var(--black);
+      font-family: "DM Sans", sans-serif;
+    }
+
+    body::before {
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      pointer-events: none;
+      opacity: 0.46;
+      content: "";
+      background-image:
+        linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px);
+      background-size: 34px 34px;
+      mask-image: radial-gradient(circle at center, black, transparent 82%);
+    }
+
+    body::after {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      pointer-events: none;
+      content: "";
+      opacity: 0.03;
+      background: repeating-linear-gradient(0deg, transparent 0 3px, #fff 4px);
+      mix-blend-mode: overlay;
+    }
+
+    .page {
+      position: relative;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      width: min(1440px, 100%);
+      min-height: 100vh;
+      margin: auto;
+      padding: 29px clamp(24px, 5vw, 78px) 24px;
+    }
+
+    .topbar, .bottombar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1.6px;
+      text-transform: uppercase;
+    }
+
+    .topbar { position: relative; z-index: 2; }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 11px;
+      color: var(--white);
+      font-family: "Space Grotesk", sans-serif;
+      font-size: 17px;
+      font-weight: 700;
+      letter-spacing: -0.2px;
+    }
+
+    .brand-mark {
+      display: grid;
+      width: 36px;
+      height: 36px;
+      place-items: center;
+      border: 1px solid rgba(255, 203, 119, 0.5);
+      border-radius: 11px;
+      color: #18100b;
+      background: linear-gradient(145deg, #ffd994, var(--orange));
+      box-shadow: 0 0 26px rgba(255, 154, 61, 0.18);
+    }
+
+    .brand-mark svg { width: 19px; height: 19px; }
+
+    .top-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 13px;
+      border: 1px solid rgba(124, 228, 232, 0.15);
+      border-radius: 999px;
+      color: #a5dadd;
+      background: rgba(124, 228, 232, 0.05);
+      font-size: 10px;
+      letter-spacing: 1.3px;
+    }
+
+    .top-status i, .system-line i {
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--cyan);
+      box-shadow: 0 0 0 4px rgba(124, 228, 232, 0.09), 0 0 13px var(--cyan);
+    }
+
+    .content {
+      position: relative;
+      display: grid;
+      grid-template-columns: 1.08fr 0.92fr;
+      align-items: center;
+      gap: clamp(40px, 8vw, 142px);
+      max-width: 1170px;
+      width: 100%;
+      margin: auto;
+      padding: 44px 0 48px;
+    }
+
+    .showcase { position: relative; z-index: 1; }
+
+    .kicker {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 22px;
+      color: var(--orange-2);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 2.7px;
+      text-transform: uppercase;
+    }
+
+    .kicker::before {
+      width: 34px;
+      height: 1px;
+      content: "";
+      background: var(--orange);
+      box-shadow: 0 0 10px var(--orange);
+    }
+
+    h1 {
+      max-width: 650px;
+      font-family: "Space Grotesk", sans-serif;
+      font-size: clamp(47px, 6vw, 81px);
+      line-height: 0.94;
+      letter-spacing: -5.2px;
+    }
+
+    h1 em {
+      color: transparent;
+      font-style: normal;
+      background: linear-gradient(100deg, var(--orange-2), var(--orange), var(--red));
+      -webkit-background-clip: text;
+      background-clip: text;
+    }
+
+    .lead {
+      max-width: 430px;
+      margin-top: 27px;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.75;
+    }
+
+    .preview {
+      display: flex;
+      align-items: center;
+      gap: 17px;
+      width: fit-content;
+      margin-top: 42px;
+      padding: 15px 18px;
+      border: 1px solid var(--border);
+      border-radius: 15px;
+      background: rgba(255, 255, 255, 0.035);
+      box-shadow: inset 0 1px rgba(255, 255, 255, 0.04);
+      backdrop-filter: blur(12px);
+    }
+
+    .mini-chart {
+      position: relative;
+      display: flex;
+      align-items: end;
+      gap: 4px;
+      width: 66px;
+      height: 32px;
+      padding: 3px;
+      border-bottom: 1px solid rgba(124, 228, 232, 0.35);
+    }
+
+    .mini-chart span {
+      width: 6px;
+      border-radius: 3px 3px 0 0;
+      background: linear-gradient(to top, rgba(124, 228, 232, 0.35), var(--cyan));
+      box-shadow: 0 0 8px rgba(124, 228, 232, 0.25);
+    }
+
+    .mini-chart span:nth-child(1) { height: 35%; }
+    .mini-chart span:nth-child(2) { height: 52%; }
+    .mini-chart span:nth-child(3) { height: 42%; }
+    .mini-chart span:nth-child(4) { height: 73%; }
+    .mini-chart span:nth-child(5) { height: 62%; }
+    .mini-chart span:nth-child(6) { height: 94%; }
+
+    .preview strong {
+      display: block;
+      color: var(--white);
+      font-family: "Space Grotesk", sans-serif;
+      font-size: 16px;
+    }
+
+    .preview small {
+      display: block;
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 10px;
+      letter-spacing: 0.9px;
+      text-transform: uppercase;
+    }
+
+    .metrics {
+      display: flex;
+      gap: 34px;
+      margin-top: 37px;
+    }
+
+    .metric { padding-left: 13px; border-left: 1px solid rgba(255, 154, 61, 0.45); }
+    .metric strong { display: block; font-family: "Space Grotesk", sans-serif; font-size: 18px; }
+    .metric span { display: block; margin-top: 5px; color: var(--muted); font-size: 10px; letter-spacing: 1px; text-transform: uppercase; }
+
+    .login-zone {
+      position: relative;
       display: flex;
       justify-content: center;
-      align-items: center;
-      height: 100vh;
-      color: #fffffe;
-      overflow: hidden;
     }
 
-    .login-container {
+    .orbit {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: min(480px, 84vw);
+      aspect-ratio: 1;
+      border: 1px solid rgba(255, 154, 61, 0.12);
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+    }
+
+    .orbit::before, .orbit::after {
+      position: absolute;
+      content: "";
+      border: 1px solid rgba(124, 228, 232, 0.09);
+      border-radius: 50%;
+    }
+
+    .orbit::before { inset: 38px; }
+    .orbit::after { inset: 88px; border-color: rgba(255, 154, 61, 0.13); }
+
+    .orbit-dot {
+      position: absolute;
+      top: 8%;
+      left: 24%;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--orange);
+      box-shadow: 0 0 18px 4px rgba(255, 154, 61, 0.48);
+    }
+
+    .login-card {
       position: relative;
-      width: 400px;
-      padding: 4px;
-      border-radius: 14px;
-      background: linear-gradient(135deg, #ff8906, #f25f4c, #0f0e17);
-      box-shadow: 0 0 35px rgba(255, 137, 6, 0.2);
-      animation: borderGlow 4s ease infinite alternate;
+      z-index: 1;
+      width: min(405px, 100%);
+      padding: 34px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 22px;
+      background: linear-gradient(145deg, rgba(29, 32, 42, 0.92), rgba(12, 14, 20, 0.94));
+      box-shadow: 0 27px 65px rgba(0, 0, 0, 0.46), inset 0 1px rgba(255, 255, 255, 0.07);
+      backdrop-filter: blur(22px);
     }
 
-    @keyframes borderGlow {
-      0% { box-shadow: 0 0 20px rgba(255, 137, 6, 0.2); }
-      100% { box-shadow: 0 0 45px rgba(242, 95, 76, 0.4); }
+    .card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 34px;
     }
 
-    .login-box {
-      background: #121118;
-      padding: 40px 35px;
-      border-radius: 12px;
-      text-align: left;
+    .card-label { color: var(--muted); font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; }
+
+    .lock {
+      display: grid;
+      width: 32px;
+      height: 32px;
+      place-items: center;
+      border: 1px solid rgba(255, 154, 61, 0.28);
+      border-radius: 10px;
+      color: var(--orange-2);
+      background: rgba(255, 154, 61, 0.08);
     }
 
-    .logo-area {
-      text-align: center;
-      margin-bottom: 30px;
+    .lock svg { width: 16px; height: 16px; }
+
+    .login-card h2 {
+      font-family: "Space Grotesk", sans-serif;
+      font-size: 29px;
+      letter-spacing: -1px;
     }
 
-    .logo-area h1 {
-      font-size: 26px;
-      font-weight: 800;
-      letter-spacing: 2px;
-      color: #ff8906;
-      text-transform: uppercase;
-      text-shadow: 0 0 10px rgba(255, 137, 6, 0.4);
-    }
+    .card-copy { margin-top: 9px; color: var(--muted); font-size: 13px; }
 
-    .logo-area p {
+    .error {
+      display: flex;
+      gap: 9px;
+      margin: 23px 0 -5px;
+      padding: 11px 12px;
+      border: 1px solid rgba(255, 109, 101, 0.27);
+      border-radius: 10px;
+      color: #ffaca7;
+      background: rgba(255, 109, 101, 0.08);
       font-size: 12px;
-      color: #a7a9be;
-      margin-top: 5px;
+      line-height: 1.4;
+    }
+
+    .error svg { flex: 0 0 auto; margin-top: 1px; }
+
+    form { margin-top: 29px; }
+    .field { margin-bottom: 18px; }
+
+    label {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 9px;
+      color: #aeb5c3;
+      font-size: 11px;
+      font-weight: 700;
       letter-spacing: 1px;
-    }
-
-    .input-group {
-      margin-bottom: 20px;
-    }
-
-    .input-group label {
-      display: block;
-      font-size: 12px;
-      color: #a7a9be;
-      margin-bottom: 8px;
       text-transform: uppercase;
-      letter-spacing: 1px;
     }
+
+    .input-shell { position: relative; }
 
     input {
       width: 100%;
-      padding: 14px 16px;
-      background: #1a1a24;
-      border: 1px solid #2e2f3e;
-      border-radius: 8px;
-      color: #fffffe;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 14px;
-      transition: all 0.3s ease;
+      height: 52px;
+      padding: 0 15px;
+      border: 1px solid rgba(255, 255, 255, 0.13);
+      border-radius: 10px;
+      outline: none;
+      color: var(--white);
+      background: rgba(0, 0, 0, 0.2);
+      font: 500 14px "DM Sans", sans-serif;
+      transition: 180ms ease;
     }
+
+    input::placeholder { color: #646c7c; }
 
     input:focus {
-      outline: none;
-      border-color: #ff8906;
-      background: #1e1d29;
-      box-shadow: 0 0 12px rgba(255, 137, 6, 0.25);
+      border-color: var(--orange);
+      background: rgba(255, 154, 61, 0.055);
+      box-shadow: 0 0 0 4px rgba(255, 154, 61, 0.09), 0 0 20px rgba(255, 154, 61, 0.07);
     }
 
-    button {
-      width: 100%;
-      padding: 14px;
-      background: linear-gradient(135deg, #ff8906, #f25f4c);
-      color: #0f0e17;
-      border: none;
-      border-radius: 8px;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 15px;
-      font-weight: 800;
+    input[type="password"] { padding-right: 48px; }
+
+    .password-toggle {
+      position: absolute;
+      top: 50%;
+      right: 11px;
+      display: grid;
+      width: 30px;
+      height: 30px;
+      place-items: center;
+      border: 0;
+      color: #7e8798;
+      background: transparent;
       cursor: pointer;
-      text-transform: uppercase;
-      letter-spacing: 1.5px;
-      margin-top: 10px;
-      transition: all 0.3s ease;
-      box-shadow: 0 4px 15px rgba(255, 137, 6, 0.3);
+      transform: translateY(-50%);
+      transition: color 180ms ease;
     }
 
-    button:hover {
+    .password-toggle:hover { color: var(--orange-2); }
+    .password-toggle svg { width: 17px; height: 17px; }
+
+    .submit {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      height: 54px;
+      margin-top: 27px;
+      padding: 0 17px 0 20px;
+      overflow: hidden;
+      border: 0;
+      border-radius: 10px;
+      color: #1f140a;
+      background: linear-gradient(100deg, var(--orange-2), var(--orange) 56%, #ff8068);
+      box-shadow: 0 10px 24px rgba(255, 129, 70, 0.18);
+      font: 700 13px "DM Sans", sans-serif;
+      letter-spacing: 0.3px;
+      cursor: pointer;
+      transition: 180ms ease;
+    }
+
+    .submit::after {
+      position: absolute;
+      top: 0;
+      left: -45%;
+      width: 30%;
+      height: 100%;
+      content: "";
+      background: rgba(255, 255, 255, 0.42);
+      filter: blur(12px);
+      transform: skewX(-18deg);
+      transition: left 550ms ease;
+    }
+
+    .submit:hover {
+      box-shadow: 0 15px 32px rgba(255, 129, 70, 0.29);
       transform: translateY(-2px);
-      box-shadow: 0 6px 20px rgba(255, 137, 6, 0.5);
-      filter: brightness(1.1);
     }
 
-    button:active {
-      transform: translateY(1px);
+    .submit:hover::after { left: 125%; }
+    .submit:active { transform: translateY(0); }
+    .submit span, .submit svg { position: relative; z-index: 1; }
+
+    .secure {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      margin-top: 19px;
+      color: #697385;
+      font-size: 10px;
+      letter-spacing: 0.25px;
     }
 
-    .error {
-      background: rgba(242, 95, 76, 0.1);
-      border-left: 3px solid #f25f4c;
-      color: #f25f4c;
-      padding: 10px 14px;
-      border-radius: 4px;
-      font-size: 13px;
-      margin-bottom: 20px;
-      text-align: left;
+    .secure svg { color: var(--cyan); }
+
+    .bottombar { gap: 20px; }
+    .system-line { display: inline-flex; align-items: center; gap: 9px; }
+    .system-line i { background: #81dca1; box-shadow: 0 0 0 4px rgba(129, 220, 161, 0.08), 0 0 13px #81dca1; }
+
+    @media (max-width: 880px) {
+      .content { grid-template-columns: 1fr; gap: 55px; max-width: 560px; }
+      .showcase { text-align: center; }
+      .kicker, .preview { justify-content: center; }
+      .lead { margin-right: auto; margin-left: auto; }
+      .metrics { justify-content: center; }
+      .login-zone { width: 100%; }
     }
 
-    .terminal-footer {
-      text-align: center;
-      margin-top: 25px;
-      font-size: 11px;
-      color: #56556b;
-      letter-spacing: 1px;
+    @media (max-width: 520px) {
+      .page { padding: 20px 17px 18px; }
+      .top-status { padding: 8px 10px; font-size: 9px; }
+      .top-status span { display: none; }
+      .content { padding: 54px 0 58px; gap: 42px; }
+      h1 { font-size: 48px; letter-spacing: -3.5px; }
+      .lead { font-size: 14px; }
+      .preview { margin: 31px auto 0; }
+      .metrics { gap: 20px; }
+      .metric strong { font-size: 16px; }
+      .login-card { padding: 27px 22px; border-radius: 18px; }
+      .bottombar { font-size: 9px; letter-spacing: 1px; }
+      .bottombar > span:last-child { display: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
     }
   </style>
 </head>
 <body>
-
-  <div class="login-container">
-    <div class="login-box">
-      <div class="logo-area">
-        <h1>💻 FF STORE</h1>
-        <p>[ SECURE ADMIN PORTAL ]</p>
+  <div class="page">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 17.5 12 4l8 13.5"></path>
+            <path d="M7 13h10M9.2 9.3h5.6"></path>
+          </svg>
+        </span>
+        <span>FF STORE</span>
       </div>
+      <div class="top-status"><i aria-hidden="true"></i><span>Infrastructure online</span><b>v2.4.0</b></div>
+    </header>
 
-      <% if (error) { %>
-        <div class="error"><%= error %></div>
-      <% } %>
+    <main class="content">
+      <section class="showcase" aria-label="FF Store command centre">
+        <div class="kicker">Private command centre</div>
+        <h1>Make every<br><em>move count.</em></h1>
+        <p class="lead">Your store, distilled into one sharp view. Track momentum, make faster decisions, and keep the operation moving.</p>
 
-      <form method="POST" action="/admin/login">
-        <div class="input-group">
-          <label>Username</label>
-          <input type="text" name="username" placeholder="Enter admin username" required autocomplete="off">
+        <div class="preview">
+          <div class="mini-chart" aria-hidden="true">
+            <span></span><span></span><span></span><span></span><span></span><span></span>
+          </div>
+          <div>
+            <strong>+24.8%</strong>
+            <small>Revenue momentum / this month</small>
+          </div>
         </div>
 
-        <div class="input-group">
-          <label>Password</label>
-          <input type="password" name="password" placeholder="••••••••••••" required>
+        <div class="metrics">
+          <div class="metric"><strong>12.4k</strong><span>Orders tracked</span></div>
+          <div class="metric"><strong>98.6%</strong><span>Uptime</span></div>
+          <div class="metric"><strong>24/7</strong><span>Live control</span></div>
         </div>
+      </section>
 
-        <button type="submit">Authenticate ⚡</button>
-      </form>
+      <section class="login-zone" aria-label="Admin sign in">
+        <div class="orbit" aria-hidden="true"><span class="orbit-dot"></span></div>
+        <div class="login-card">
+          <div class="card-head">
+            <span class="card-label">Admin authentication</span>
+            <span class="lock" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="4" y="10" width="16" height="11" rx="2"></rect>
+                <path d="M8 10V7a4 4 0 0 1 8 0v3"></path>
+              </svg>
+            </span>
+          </div>
 
-      <div class="terminal-footer">
-        ACCESS RESTRICTED // 256-BIT ENCRYPTION
-      </div>
-    </div>
+          <h2>Welcome back.</h2>
+          <p class="card-copy">Enter your credentials to continue.</p>
+
+          <% if (error) { %>
+            <div class="error" role="alert">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <circle cx="12" cy="12" r="9"></circle>
+                <path d="M12 8v4M12 16h.01"></path>
+              </svg>
+              <span><%= error %></span>
+            </div>
+          <% } %>
+
+          <form method="POST" action="/admin/login">
+            <div class="field">
+              <label for="username">Username <span>Required</span></label>
+              <div class="input-shell">
+                <input id="username" type="text" name="username" placeholder="e.g. admin" required autocomplete="username" autofocus>
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="password">Password <span>Required</span></label>
+              <div class="input-shell">
+                <input id="password" type="password" name="password" placeholder="Enter your password" required autocomplete="current-password">
+                <button class="password-toggle" type="button" aria-label="Show password" aria-controls="password" aria-pressed="false">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"></path>
+                    <circle cx="12" cy="12" r="2.5"></circle>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <button class="submit" type="submit">
+              <span>Enter command centre</span>
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M5 12h13M13 6l6 6-6 6"></path>
+              </svg>
+            </button>
+          </form>
+
+          <div class="secure">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 3 5 6v5c0 4.7 3 8.7 7 10 4-1.3 7-5.3 7-10V6l-7-3Z"></path>
+              <path d="m9 12 2 2 4-4"></path>
+            </svg>
+            <span>Encrypted session · Access monitored</span>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="bottombar">
+      <span class="system-line"><i aria-hidden="true"></i> All systems operational</span>
+      <span>© FF Store / Internal use only</span>
+    </footer>
   </div>
 
+  <script>
+    const toggle = document.querySelector(".password-toggle");
+    const password = document.querySelector("#password");
+
+    toggle?.addEventListener("click", () => {
+      const showing = password.type === "text";
+      password.type = showing ? "password" : "text";
+      toggle.setAttribute("aria-label", showing ? "Show password" : "Hide password");
+      toggle.setAttribute("aria-pressed", String(!showing));
+      toggle.innerHTML = showing
+        ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"></path><circle cx="12" cy="12" r="2.5"></circle></svg>'
+        : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m3 3 18 18"></path><path d="M10.6 5.1A10.8 10.8 0 0 1 12 5c6 0 9.5 7 9.5 7a18 18 0 0 1-3.1 3.9M6.2 6.2C3.8 7.9 2.5 12 2.5 12a18.2 18.2 0 0 0 5.1 5.1A10.8 10.8 0 0 0 12 19c1.2 0 2.3-.2 3.3-.6"></path><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"></path></svg>';
+    });
+  </script>
 </body>
 </html>
