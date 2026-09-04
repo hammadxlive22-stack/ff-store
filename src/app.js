@@ -197,7 +197,30 @@ bot.launch().catch((err) => {
   logger.error('Bot launch failed:', err);
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   logger.info(`🚀 FF STORE running on port ${PORT}`);
   logger.info(`📊 Admin: http://localhost:${PORT}/admin`);
 });
+
+// ✅ Graceful Shutdown for Render & Termux (Prevents database connection leaks)
+process.once('SIGINT', () => gracefulShutdown('SIGINT'));
+process.once('SIGTERM', () => gracefulShutdown('SIGTERM'));
+
+async function gracefulShutdown(signal) {
+  logger.info(`Received ${signal}. Shutting down gracefully...`);
+  try {
+    server.close(async () => {
+      logger.info('HTTP server closed.');
+      try {
+        await prisma.$disconnect();
+        logger.info('Database connection closed.');
+      } catch (dbErr) {
+        logger.error('Error disconnecting database:', dbErr);
+      }
+      process.exit(0);
+    });
+  } catch (err) {
+    logger.error('Error during shutdown:', err);
+    process.exit(1);
+  }
+}
