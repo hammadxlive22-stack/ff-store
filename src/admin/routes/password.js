@@ -15,7 +15,7 @@ router.get(['/password', '/change-password'], isAuthenticated, (req, res) => {
   res.render('password', { error: null, success: null });
 });
 
-// POST: Update Password with safe fallback
+// POST: Update Password with foolproof fallback
 router.post(['/password', '/change-password'], isAuthenticated, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
@@ -32,11 +32,19 @@ router.post(['/password', '/change-password'], isAuthenticated, async (req, res)
       return res.redirect('/admin/login');
     }
 
-    // Check if password matches (handles both bcrypt hashes and plain text safely)
     let isMatch = false;
-    if (admin.password && (admin.password.startsWith('$2b$') || admin.password.startsWith('$2a$'))) {
-      isMatch = await bcrypt.compare(currentPassword, admin.password);
-    } else {
+    
+    // Try bcrypt check first, fallback to plain text if it throws or fails
+    try {
+      if (admin.password && admin.password.startsWith('$')) {
+        isMatch = await bcrypt.compare(currentPassword, admin.password);
+      }
+    } catch (e) {
+      isMatch = false;
+    }
+
+    // If bcrypt didn't match, check direct plain text match
+    if (!isMatch) {
       isMatch = (currentPassword === admin.password);
     }
 
