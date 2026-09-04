@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const prisma = require('../../services/db'); // ✅ Centralized DB connection
-const bcrypt = require('bcrypt'); // Password hash check karne ke liye
+const prisma = require('../../services/db');
+const bcrypt = require('bcrypt');
 
 const isAuthenticated = (req, res, next) => {
   if (req.session && req.session.adminId) {
@@ -10,12 +10,12 @@ const isAuthenticated = (req, res, next) => {
   res.redirect('/admin/login');
 };
 
-// GET: Password page (Supporting both /password and /change-password to prevent 404)
+// GET: Password page
 router.get(['/password', '/change-password'], isAuthenticated, (req, res) => {
   res.render('password', { error: null, success: null });
 });
 
-// POST: Update Password (Supporting both endpoints)
+// POST: Update Password with safe fallback
 router.post(['/password', '/change-password'], isAuthenticated, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
@@ -24,7 +24,6 @@ router.post(['/password', '/change-password'], isAuthenticated, async (req, res)
       return res.render('password', { error: 'All fields are required', success: null });
     }
 
-    // Admin find karo session ID se
     const admin = await prisma.admin.findUnique({
       where: { id: req.session.adminId }
     });
@@ -33,24 +32,31 @@ router.post(['/password', '/change-password'], isAuthenticated, async (req, res)
       return res.redirect('/admin/login');
     }
 
-    // Current password verify karo (bcrypt ya plain text, agar bcrypt hai toh compare karo)
-    const isMatch = await bcrypt.compare(currentPassword, admin.password);
+    // Check if password matches (handles both bcrypt hashes and plain text safely)
+    let isMatch = false;
+    if (admin.password && (admin.password.startsWith('$2b$') || admin.password.startsWith('$2a$'))) {
+      isMatch = await bcrypt.compare(currentPassword, admin.password);
+    } else {
+      isMatch = (currentPassword === admin.password);
+    }
+
     if (!isMatch) {
       return res.render('password', { error: 'Current password is incorrect', success: null });
     }
 
-    // Naya password hash karke save karo
+    // Hash new password securely
     const hashedPassword = await bcrypt.hash(newPassword, 10);
+    
     await prisma.admin.update({
       where: { id: admin.id },
       data: { password: hashedPassword }
     });
 
-    console.log(`[PASSWORD CHANGED] Admin ID: ${admin.id} updated their password.`);
-    res.render('password', { error: null, success: 'Password updated successfully!' });
+    console.log(`[PASSWORD CHANGED] Admin ID: ${admin.id} updated password successfully.`);
+    return res.render('password', { error: null, success: 'Password updated successfully!' });
   } catch (error) {
-    console.error('Error updating password:', error);
-    res.render('password', { error: 'Server Error', success: null });
+    console.error('CRITICAL PASSWORD ERROR:', error);
+    return res.render('password', { error: `Server Error: ${error.message}`, success: null });
   }
 });
 
