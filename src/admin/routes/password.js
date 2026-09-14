@@ -32,6 +32,10 @@ router.post(['/password', '/change-password'], isAuthenticated, async (req, res)
       return res.redirect('/admin/login');
     }
 
+    // Yahan console log add kar diya hai
+    console.log('Current Password:', currentPassword);
+    console.log('Stored Password:', admin.password);
+
     let isMatch = false;
 
     // Try bcrypt check first, fallback to plain text if it throws or fails
