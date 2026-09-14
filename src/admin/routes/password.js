@@ -15,7 +15,7 @@ router.get(['/password', '/change-password'], isAuthenticated, (req, res) => {
   res.render('password', { error: null, success: null });
 });
 
-// POST: Update Password with foolproof fallback
+// POST: Update Password with safe fallback
 router.post(['/password', '/change-password'], isAuthenticated, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
@@ -33,7 +33,7 @@ router.post(['/password', '/change-password'], isAuthenticated, async (req, res)
     }
 
     let isMatch = false;
-    
+
     // Try bcrypt check first, fallback to plain text if it throws or fails
     try {
       if (admin.password && admin.password.startsWith('$')) {
@@ -54,7 +54,7 @@ router.post(['/password', '/change-password'], isAuthenticated, async (req, res)
 
     // Hash new password securely
     const hashedPassword = await bcrypt.hash(newPassword, 10);
-    
+
     await prisma.admin.update({
       where: { id: admin.id },
       data: { password: hashedPassword }
