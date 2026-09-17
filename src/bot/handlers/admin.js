@@ -2,6 +2,7 @@ const { Markup } = require('telegraf');
 const prisma = require('../../services/db');
 const logger = require('../../utils/logger');
 const bcrypt = require('bcryptjs'); // Make sure bcryptjs is installed in your package.json
+const { generateKeyFromPanel } = require('../../services/panelApi');
 
 // Helper to check if user is admin
 async function checkAdmin(telegramId) {
@@ -396,16 +397,69 @@ module.exports = (bot) => {
       if (!admin || !admin.isActive) return ctx.answerCbQuery('❌ Unauthorized.');
 
       const orderId = ctx.match[1];
-      const order = await prisma.order.findUnique({ where: { id: orderId } });
+      const order = await prisma.order.findUnique({
+        where: { id: orderId },
+        include: { user: true, product: true, plan: true },
+      });
 
       if (!order) return ctx.answerCbQuery('Order not found.');
       if (order.paymentStatus !== 'SUCCESS') return ctx.answerCbQuery('❌ Not verified.');
+      if (order.deliveryStatus === 'DELIVERED') return ctx.answerCbQuery('✅ Already delivered.');
 
-      ctx.session = ctx.session || {};
-      ctx.session.awaitingKeyForOrder = orderId;
-      ctx.session.sessionTime = Date.now();
-      
-      await ctx.reply(`🔐 Enter key to deliver:\n(Order: ${orderId.slice(0,8)})\n(Type /cancel to abort)`);
+      ctx.answerCbQuery('⏳ Generating key from panel...').catch(() => {});
+      await ctx.reply(`⏳ Fetching key from panel for order <code>${orderId.slice(0, 8)}</code>...`, { parse_mode: 'HTML' });
+
+      let panelResult;
+      try {
+        panelResult = await generateKeyFromPanel(order);
+      } catch (apiErr) {
+        logger.error('Panel API auto-delivery error:', apiErr);
+        panelResult = { success: false, text: '⚠️ Panel API request failed (timeout/network error).' };
+      }
+
+      if (!panelResult.success) {
+        // 🩹 Fallback: let admin type the key in manually, same as before
+        ctx.session = ctx.session || {};
+        ctx.session.awaitingKeyForOrder = orderId;
+        ctx.session.sessionTime = Date.now();
+        return ctx.reply(
+          `${panelResult.text}\n\n🔐 Auto-delivery failed. Please enter the key manually to deliver:\n(Order: ${orderId.slice(0, 8)})\n(Type /cancel to abort)`
+        );
+      }
+
+      const keyContent = panelResult.text;
+
+      await prisma.$transaction(async (tx) => {
+        await tx.delivery.create({
+          data: { orderId: orderId, keyContent: keyContent },
+        });
+        await tx.order.update({
+          where: { id: orderId },
+          data: {
+            approvalStatus: 'APPROVED',
+            deliveryStatus: 'DELIVERED',
+            status: 'DELIVERED',
+          },
+        });
+      });
+
+      const supportChannelSetting = await prisma.systemSetting.findUnique({ where: { key: 'SUPPORT_CHANNEL_LINK' } });
+      let channelPrompt = '';
+      if (supportChannelSetting && supportChannelSetting.value) {
+        channelPrompt = `\n📢 Join our update channel: ${supportChannelSetting.value}\n`;
+      }
+
+      await bot.telegram.sendMessage(
+        order.user.telegramId.toString(),
+        `🎉 <b>ORDER APPROVED</b>\n\n✅ Payment Verified\n📦 Product: ${order.product.name}\n⏱️ Plan: ${order.plan.durationLabel}\n\n🔐 <b>Your Key:</b>\n<code>${keyContent}</code>${channelPrompt}\n⚠️ Keep your key private.\n\n🧾 Order ID: <code>${order.id.slice(0, 8)}</code>`,
+        { parse_mode: 'HTML' }
+      ).catch((err) => logger.error('User key delivery message error:', err));
+
+      await ctx.reply(`✅ Key auto-delivered successfully:\n<code>${keyContent}</code>`, { parse_mode: 'HTML' });
+
+      await prisma.auditLog.create({
+        data: { adminId: admin.id, action: 'AUTO_APPROVE_AND_DELIVER', details: { orderId, key: keyContent } },
+      });
     } catch (error) {
       logger.error('Approve error:', error);
       await ctx.answerCbQuery('❌ Error.');
