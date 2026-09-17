@@ -22,7 +22,7 @@ module.exports = (bot) => {
       // Clear any previous stuck sessions when opening admin panel fresh
       ctx.session = {};
 
-      const adminPanelText = `🛠️ <b>HACKER ADMIN CONTROL PANEL</b>\n✦━━━━━━━━━━━━━━━━━━━━✦\nSelect an option below to manage products, maintenance, settings, or search user orders:`;
+      const adminPanelText = `🛠️ <b>HACKER HAMMAD ADMIN CONTROL PANEL</b>\n✦━━━━━━━━━━━━━━━━━━━━✦\nSelect an option below to manage products, maintenance, settings, or search user orders:`;
 
       // 🔘 Inline Buttons configured with Custom Emoji IDs for Telegram Premium Owners
       const adminButtons = {
