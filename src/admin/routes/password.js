@@ -32,24 +32,15 @@ router.post(['/password', '/change-password'], isAuthenticated, async (req, res)
       return res.redirect('/admin/login');
     }
 
-    // Yahan console log add kar diya hai
-    console.log('Current Password:', currentPassword);
-    console.log('Stored Password:', admin.password);
-
     let isMatch = false;
 
-    // Try bcrypt check first, fallback to plain text if it throws or fails
+    // bcrypt check against the correct field: passwordHash
     try {
-      if (admin.password && admin.password.startsWith('$')) {
-        isMatch = await bcrypt.compare(currentPassword, admin.password);
+      if (admin.passwordHash && admin.passwordHash.startsWith('$')) {
+        isMatch = await bcrypt.compare(currentPassword, admin.passwordHash);
       }
     } catch (e) {
       isMatch = false;
-    }
-
-    // If bcrypt didn't match, check direct plain text match
-    if (!isMatch) {
-      isMatch = (currentPassword === admin.password);
     }
 
     if (!isMatch) {
@@ -61,7 +52,7 @@ router.post(['/password', '/change-password'], isAuthenticated, async (req, res)
 
     await prisma.admin.update({
       where: { id: admin.id },
-      data: { password: hashedPassword }
+      data: { passwordHash: hashedPassword }
     });
 
     console.log(`[PASSWORD CHANGED] Admin ID: ${admin.id} updated password successfully.`);
