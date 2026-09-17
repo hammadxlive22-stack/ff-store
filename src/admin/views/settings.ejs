@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FF STORE - Settings</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&display=swap');
+    :root {
+      --bg: #030712; --card-bg: #090d16; --border: #1e293b;
+      --neon: #38bdf8; --neon-glow: rgba(56, 189, 248, 0.25);
+      --text: #f8fafc; --muted: #64748b; --success: #34d399; --danger: #f87171;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'JetBrains Mono', monospace; background: var(--bg);
+      background-image:
+        radial-gradient(circle at 50% 0%, rgba(14, 165, 233, 0.07) 0%, transparent 65%),
+        linear-gradient(rgba(15, 23, 42, 0.4) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(15, 23, 42, 0.4) 1px, transparent 1px);
+      background-size: 100% 100%, 35px 35px, 35px 35px;
+      color: var(--text); padding: 30px clamp(15px, 4vw, 50px); min-height: 100vh;
+    }
+    .header-area { display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 25px; border-bottom: 1px solid var(--border); padding-bottom: 20px;
+      flex-wrap: wrap; gap: 12px; }
+    h1 { font-size: 22px; font-weight: 800; color: var(--neon); text-transform: uppercase;
+      letter-spacing: 2px; text-shadow: 0 0 12px var(--neon-glow); }
+    a.back-link { color: var(--muted); text-decoration: none; font-size: 12px; background: var(--card-bg);
+      padding: 8px 14px; border-radius: 6px; border: 1px solid var(--border); transition: all 0.2s; }
+    a.back-link:hover { color: var(--neon); border-color: var(--neon); }
+
+    .alert { padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; font-size: 13px; max-width: 520px; }
+    .alert-success { background: rgba(52,211,153,0.1); color: var(--success); border: 1px solid #059669; }
+    .alert-error { background: rgba(248,113,113,0.1); color: var(--danger); border: 1px solid #dc2626; }
+
+    .card { background: var(--card-bg); border: 1px solid var(--border); padding: 28px;
+      border-radius: 12px; max-width: 520px; box-shadow: 0 0 25px rgba(14, 165, 233, 0.08); }
+    .form-group { margin-bottom: 22px; }
+    label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 8px;
+      text-transform: uppercase; letter-spacing: 1.5px; }
+    input {
+      width: 100%; padding: 13px 14px; background: #0f172a; border: 1px solid var(--border);
+      border-radius: 6px; color: var(--text); font-family: inherit; font-size: 13px; outline: none;
+      transition: all 0.2s;
+    }
+    input:focus { border-color: var(--neon); box-shadow: 0 0 10px var(--neon-glow); }
+    button {
+      padding: 13px 22px; background: linear-gradient(135deg, #0ea5e9, #2563eb); color: white;
+      border: none; border-radius: 6px; font-family: inherit; font-weight: 800; font-size: 13px;
+      text-transform: uppercase; letter-spacing: 1.5px; cursor: pointer; width: 100%;
+      transition: all 0.2s; box-shadow: 0 4px 15px rgba(14,165,233,0.3);
+    }
+    button:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(14,165,233,0.5); }
+    .hint { font-size: 11px; color: var(--muted); margin-top: 20px; line-height: 1.6; }
+  </style>
+</head>
+<body>
+  <div class="header-area">
+    <h1>⚙️ Settings</h1>
+    <a href="/admin/dashboard" class="back-link">← Back to Dashboard</a>
+  </div>
+
+  <% if (error) { %><div class="alert alert-error"><%= error %></div><% } %>
+  <% if (success) { %><div class="alert alert-success"><%= success %></div><% } %>
+
+  <div class="card">
+    <form method="POST" action="/admin/settings">
+      <div class="form-group">
+        <label>Support Channel Link</label>
+        <input type="text" name="supportUrl" placeholder="https://t.me/yourchannel" value="<%= settings.SUPPORT_CHANNEL_LINK || '' %>">
+      </div>
+      <div class="form-group">
+        <label>APK Download Link</label>
+        <input type="text" name="apkUrl" placeholder="https://yoursite.com/app.apk" value="<%= settings.APK_DOWNLOAD_LINK || '' %>">
+      </div>
+      <button type="submit">Save Settings</button>
+    </form>
+    <div class="hint">
+      // These links are shown to customers by the bot — the support channel appears after key delivery,
+      the APK link is sent via the /apk or related bot command.
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FF STORE - Users</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&display=swap');
+    :root {
+      --bg: #030712; --card-bg: #090d16; --border: #1e293b;
+      --neon: #38bdf8; --neon-glow: rgba(56, 189, 248, 0.25);
+      --text: #f8fafc; --muted: #64748b; --danger: #f87171;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'JetBrains Mono', monospace; background: var(--bg);
+      background-image:
+        radial-gradient(circle at 50% 0%, rgba(14, 165, 233, 0.07) 0%, transparent 65%),
+        linear-gradient(rgba(15, 23, 42, 0.4) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(15, 23, 42, 0.4) 1px, transparent 1px);
+      background-size: 100% 100%, 35px 35px, 35px 35px;
+      color: var(--text); padding: 30px clamp(15px, 4vw, 50px); min-height: 100vh;
+    }
+    .header-area { display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 25px; border-bottom: 1px solid var(--border); padding-bottom: 20px;
+      flex-wrap: wrap; gap: 12px; }
+    h1 { font-size: 22px; font-weight: 800; color: var(--neon); text-transform: uppercase;
+      letter-spacing: 2px; text-shadow: 0 0 12px var(--neon-glow); }
+    a.back-link { color: var(--muted); text-decoration: none; font-size: 12px; background: var(--card-bg);
+      padding: 8px 14px; border-radius: 6px; border: 1px solid var(--border); transition: all 0.2s; }
+    a.back-link:hover { color: var(--neon); border-color: var(--neon); }
+
+    .search-bar { display: flex; gap: 10px; margin-bottom: 20px; }
+    .search-bar input {
+      flex: 1; max-width: 350px; padding: 11px 14px; background: var(--card-bg);
+      border: 1px solid var(--border); border-radius: 6px; color: var(--text);
+      font-family: inherit; font-size: 13px; outline: none;
+    }
+    .search-bar input:focus { border-color: var(--neon); box-shadow: 0 0 10px var(--neon-glow); }
+    .search-bar button {
+      padding: 11px 20px; background: linear-gradient(135deg, #0ea5e9, #2563eb); color: white;
+      border: none; border-radius: 6px; font-family: inherit; font-weight: 700; font-size: 12px;
+      text-transform: uppercase; letter-spacing: 1px; cursor: pointer;
+    }
+    .total-badge { font-size: 11px; color: var(--muted); margin-bottom: 15px; }
+    .total-badge b { color: var(--neon); }
+
+    .table-wrap { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 650px; }
+    th { background: #0f172a; color: var(--neon); text-transform: uppercase; letter-spacing: 1px;
+      font-size: 10.5px; padding: 12px 14px; text-align: left; border-bottom: 1px solid var(--border); }
+    td { padding: 12px 14px; border-bottom: 1px solid #0f172a; color: #cbd5e1; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(56, 189, 248, 0.04); }
+    code { background: #0f172a; padding: 3px 7px; border-radius: 4px; color: #38bdf8; }
+    .btn-delete { background: rgba(248,113,113,0.12); color: var(--danger); border: 1px solid #dc2626;
+      padding: 6px 12px; font-size: 11px; border-radius: 4px; cursor: pointer; font-family: inherit; }
+    .btn-delete:hover { background: #ef4444; color: white; }
+    .empty-row { text-align: center; color: var(--muted); padding: 30px; }
+  </style>
+</head>
+<body>
+  <div class="header-area">
+    <h1>👤 Users</h1>
+    <a href="/admin/dashboard" class="back-link">← Back to Dashboard</a>
+  </div>
+
+  <form class="search-bar" method="GET" action="/admin/users">
+    <input type="text" name="search" placeholder="Search by username, name or Telegram ID..." value="<%= search %>">
+    <button type="submit">Search</button>
+  </form>
+
+  <div class="total-badge">Total Users: <b><%= totalUsers %></b><% if (search) { %> · Showing results for "<%= search %>"<% } %></div>
+
+  <div class="table-wrap">
+    <table>
+      <tr><th>Telegram ID</th><th>Username</th><th>Name</th><th>Orders</th><th>Joined</th><th>Action</th></tr>
+      <% if (users.length === 0) { %>
+        <tr><td colspan="6" class="empty-row">No users found.</td></tr>
+      <% } else { %>
+        <% users.forEach(u => { %>
+          <tr>
+            <td><code><%= u.telegramId.toString() %></code></td>
+            <td>@<%= u.username || '—' %></td>
+            <td><%= [u.firstName, u.lastName].filter(Boolean).join(' ') || '—' %></td>
+            <td><%= u._count.orders %></td>
+            <td><%= u.createdAt.toISOString().slice(0,10) %></td>
+            <td>
+              <form method="POST" action="/admin/users/<%= u.id %>/delete" onsubmit="return confirm('Delete this user? (Blocked if they have existing orders)');">
+                <button type="submit" class="btn-delete">Delete</button>
+              </form>
+            </td>
+          </tr>
+        <% }) %>
+      <% } %>
+    </table>
+  </div>
+</body>
+</html>

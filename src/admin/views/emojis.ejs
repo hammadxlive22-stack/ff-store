@@ -2,38 +2,97 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>FF STORE - Custom Emoji Manager</title>
   <style>
-    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #1a1a2e; color: #ffffff; padding: 20px; }
-    h1 { color: #e94560; margin-bottom: 5px; }
-    .back-btn { color: #e94560; text-decoration: none; font-weight: bold; display: inline-block; margin-bottom: 20px; }
-    .back-btn:hover { text-decoration: underline; }
-    
-    .alert { padding: 10px 15px; border-radius: 5px; margin-bottom: 15px; font-weight: bold; }
-    .alert-success { background: #0f5132; color: #d1e7dd; border: 1px solid #0f5132; }
-    .alert-error { background: #842029; color: #f8d7da; border: 1px solid #842029; }
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&display=swap');
 
-    .form-container { background: #16213e; padding: 20px; border-radius: 8px; border: 1px solid #0f3460; margin-bottom: 30px; }
-    input, select { padding: 10px; margin: 5px; background: #0f3460; border: 1px solid #e94560; color: white; border-radius: 5px; outline: none; }
-    input:focus, select:focus { border-color: #ff2e63; }
-    
-    button { padding: 10px 20px; background: #e94560; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; transition: 0.2s; }
-    button:hover { background: #ff2e63; }
-    .btn-delete { background: #dc3545; padding: 5px 10px; font-size: 12px; }
-    .btn-delete:hover { background: #bd2130; }
+    :root {
+      --bg: #030712; --card-bg: #090d16; --border: #1e293b;
+      --neon: #38bdf8; --neon-glow: rgba(56, 189, 248, 0.25);
+      --text: #f8fafc; --muted: #64748b;
+      --success: #34d399; --danger: #f87171;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'JetBrains Mono', monospace;
+      background: var(--bg);
+      background-image:
+        radial-gradient(circle at 50% 0%, rgba(14, 165, 233, 0.07) 0%, transparent 65%),
+        linear-gradient(rgba(15, 23, 42, 0.4) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(15, 23, 42, 0.4) 1px, transparent 1px);
+      background-size: 100% 100%, 35px 35px, 35px 35px;
+      color: var(--text);
+      padding: 30px clamp(15px, 4vw, 50px);
+      min-height: 100vh;
+    }
+    .header-area {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 25px; border-bottom: 1px solid var(--border); padding-bottom: 20px;
+      flex-wrap: wrap; gap: 12px;
+    }
+    h1 { font-size: 22px; font-weight: 800; color: var(--neon); text-transform: uppercase;
+      letter-spacing: 2px; text-shadow: 0 0 12px var(--neon-glow); }
+    a.back-link {
+      color: var(--muted); text-decoration: none; font-size: 12px; background: var(--card-bg);
+      padding: 8px 14px; border-radius: 6px; border: 1px solid var(--border); transition: all 0.2s;
+    }
+    a.back-link:hover { color: var(--neon); border-color: var(--neon); }
 
-    table { width: 100%; border-collapse: collapse; margin: 15px 0; background: #16213e; border-radius: 8px; overflow: hidden; }
-    th, td { border: 1px solid #0f3460; padding: 12px; text-align: left; }
-    th { background: #0f3460; color: #e94560; }
-    code { background: #0f3460; padding: 3px 6px; border-radius: 4px; color: #00fff5; }
+    .alert { padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; font-size: 13px; }
+    .alert-success { background: rgba(52,211,153,0.1); color: var(--success); border: 1px solid #059669; }
+    .alert-error { background: rgba(248,113,113,0.1); color: var(--danger); border: 1px solid #dc2626; }
+
+    .form-container {
+      background: var(--card-bg); padding: 22px; border-radius: 12px;
+      border: 1px solid var(--border); margin-bottom: 35px;
+      box-shadow: 0 0 25px rgba(14, 165, 233, 0.08);
+    }
+    .form-container h3 { font-size: 13px; color: var(--muted); text-transform: uppercase;
+      letter-spacing: 1.5px; margin-bottom: 14px; border-left: 3px solid var(--neon); padding-left: 8px; }
+    form.inline { display: flex; gap: 10px; flex-wrap: wrap; }
+    input, select {
+      flex: 1; min-width: 160px; padding: 11px 13px; background: #0f172a;
+      border: 1px solid var(--border); border-radius: 6px; color: #f1f5f9;
+      font-family: inherit; font-size: 13px; outline: none; transition: all 0.2s;
+    }
+    input:focus, select:focus { border-color: var(--neon); box-shadow: 0 0 10px var(--neon-glow); }
+    button {
+      padding: 11px 20px; background: linear-gradient(135deg, #0ea5e9, #2563eb);
+      color: white; border: none; border-radius: 6px; font-family: inherit;
+      font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: 1px;
+      cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 15px rgba(14,165,233,0.3);
+    }
+    button:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(14,165,233,0.5); }
+    .btn-delete {
+      background: rgba(248,113,113,0.12); color: var(--danger); border: 1px solid #dc2626;
+      padding: 6px 12px; font-size: 11px; box-shadow: none;
+    }
+    .btn-delete:hover { background: #ef4444; color: white; transform: none; box-shadow: 0 0 10px rgba(239,68,68,0.4); }
+
+    h3.category-title { font-size: 13px; color: var(--muted); margin: 25px 0 10px;
+      text-transform: uppercase; letter-spacing: 1.5px; }
+    h3.category-title b { color: var(--neon); text-shadow: 0 0 8px var(--neon-glow); }
+
+    .table-wrap { background: var(--card-bg); border: 1px solid var(--border);
+      border-radius: 12px; overflow-x: auto; margin-bottom: 10px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 500px; }
+    th { background: #0f172a; color: var(--neon); text-transform: uppercase; letter-spacing: 1px;
+      font-size: 10.5px; padding: 11px 14px; text-align: left; border-bottom: 1px solid var(--border); }
+    td { padding: 11px 14px; border-bottom: 1px solid #0f172a; color: #cbd5e1; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(56, 189, 248, 0.04); }
+    code { background: #0f172a; padding: 3px 7px; border-radius: 4px; color: #38bdf8; }
+    .empty-row { text-align: center; color: var(--muted); }
   </style>
 </head>
 <body>
 
-  <h1>💎 Custom Emoji Manager</h1>
-  <a href="/admin/dashboard" class="back-btn">← Back to Dashboard</a>
+  <div class="header-area">
+    <h1>💎 Custom Emoji Manager</h1>
+    <a href="/admin/dashboard" class="back-link">← Back to Dashboard</a>
+  </div>
 
-  <!-- Notifications Section -->
   <% if (typeof error !== 'undefined' && error) { %>
     <div class="alert alert-error"><%= error %></div>
   <% } %>
@@ -41,11 +100,10 @@
     <div class="alert alert-success"><%= success %></div>
   <% } %>
 
-  <!-- Add New Emoji Form -->
   <div class="form-container">
-    <h2>➕ Add New Emoji</h2>
-    <form method="POST" action="/admin/emojis">
-      <input name="label" placeholder="Emoji Label (e.g., SHOP)" required style="text-transform: uppercase;">
+    <h3>➕ Add New Emoji</h3>
+    <form method="POST" action="/admin/emojis" class="inline">
+      <input name="label" placeholder="Label (e.g., SHOP)" required style="text-transform: uppercase;">
       <input name="emojiId" placeholder="Telegram Emoji ID" required>
       <select name="categoryId" required>
         <option value="" disabled selected>Select Category</option>
@@ -53,25 +111,16 @@
           <option value="<%= cat.id %>"><%= cat.key %> (<%= cat.label %>)</option>
         <% }) %>
       </select>
-      <input name="fallbackEmoji" placeholder="Fallback Emoji (🛒)" required>
+      <input name="fallbackEmoji" placeholder="Fallback (🛒)" required>
       <button type="submit">Add Emoji</button>
     </form>
   </div>
 
-  <!-- Display Categories & Emojis -->
   <% categories.forEach(cat => { %>
-    <h3>📁 Category: <span style="color: #e94560;"><%= cat.key %></span> (<%= cat.label %>)</h3>
-    <table>
-      <thead>
-        <tr>
-          <th>Label</th>
-          <th>Emoji ID</th>
-          <th>Fallback</th>
-          <th>Status</th>
-          <th>Action</th>
-        </tr>
-      </thead>
-      <tbody>
+    <h3 class="category-title">📁 <b><%= cat.key %></b> — <%= cat.label %></h3>
+    <div class="table-wrap">
+      <table>
+        <tr><th>Label</th><th>Emoji ID</th><th>Fallback</th><th>Status</th><th>Action</th></tr>
         <% if (cat.customEmojis && cat.customEmojis.length > 0) { %>
           <% cat.customEmojis.forEach(emoji => { %>
             <tr>
@@ -80,19 +129,17 @@
               <td style="font-size: 18px;"><%= emoji.fallbackEmoji %></td>
               <td><%= emoji.isActive ? '✅ Active' : '❌ Inactive' %></td>
               <td>
-                <form method="POST" action="/admin/emojis/delete/<%= emoji.id %>" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this emoji?');">
+                <form method="POST" action="/admin/emojis/delete/<%= emoji.id %>" style="display:inline;" onsubmit="return confirm('Delete this emoji?');">
                   <button type="submit" class="btn-delete">Delete</button>
                 </form>
               </td>
             </tr>
           <% }) %>
         <% } else { %>
-          <tr>
-            <td colspan="5" style="text-align: center; color: #888;">No emojis added in this category yet.</td>
-          </tr>
+          <tr><td colspan="5" class="empty-row">No emojis added in this category yet.</td></tr>
         <% } %>
-      </tbody>
-    </table>
+      </table>
+    </div>
   <% }) %>
 
 </body>
