@@ -23,6 +23,7 @@ model Product {
   name          String
   description   String?
   panelProductId String? @map("panel_product_id") // 🔥 Panel API PID binding
+  requiresAndroidId Boolean @default(false) @map("requires_android_id") // 🔥 V1/device-bound products need this
   isMaintenance Boolean  @default(false) @map("is_maintenance") // 🔥 Maintenance toggle
   maintenanceReason String? @map("maintenance_reason")
   isActive      Boolean  @default(true) @map("is_active")
@@ -60,6 +61,7 @@ model Order {
   paymentStatus  String   @default("PENDING") @map("payment_status")
   approvalStatus String   @default("PENDING") @map("approval_status")
   deliveryStatus String   @default("PENDING") @map("delivery_status")
+  androidId      String?  @map("android_id")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
   payment        Payment?
