@@ -168,7 +168,7 @@ app.post('/payment/webhook', async (req, res) => {
 
             await bot.telegram.sendMessage(
               order.user.telegramId.toString(),
-              `🎉 <b>PAYMENT CONFIRMED — KEY DELIVERED</b>\n\n📦 Product: ${order.product.name}\n⏱️ Plan: ${order.plan.durationLabel}\n\n🔐 <b>Your Key:</b>\n<code>${keyContent}</code>${channelPrompt}\n⚠️ Keep your key private.\n\n🧾 Order ID: <code>${order.id.slice(0,8)}</code>`,
+              `🎉 <b>PAYMENT CONFIRMED SUCESSFUL— KEY DELIVERED</b>\n\n📦 Product: ${order.product.name}\n⏱️ Plan: ${order.plan.durationLabel}\n\n🔐 <b>Your Key:</b>\n<code>${keyContent}</code>${channelPrompt}\n⚠️ Keep your key private.\n\n🧾 Order ID: <code>${order.id.slice(0,8)}</code>`,
               { parse_mode: 'HTML' }
             ).catch((err) => logger.error('Webhook user key delivery error:', err));
 
