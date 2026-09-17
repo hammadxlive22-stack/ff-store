@@ -6,99 +6,79 @@
   <title>FF STORE - Custom Emoji Manager</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&display=swap');
-
     :root {
-      --bg: #030712; --card-bg: #090d16; --border: #1e293b;
-      --neon: #38bdf8; --neon-glow: rgba(56, 189, 248, 0.25);
-      --text: #f8fafc; --muted: #64748b;
-      --success: #34d399; --danger: #f87171;
+      --bg: #01040a; --card-bg: #050b16; --border: #0d2438;
+      --neon: #00f6ff; --neon-glow: rgba(0, 246, 255, 0.45);
+      --text: #eaf9ff; --muted: #4d6b7a; --success: #00ff9d; --danger: #ff2d55;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: 'JetBrains Mono', monospace;
-      background: var(--bg);
+      font-family: 'JetBrains Mono', monospace; background: var(--bg);
       background-image:
-        radial-gradient(circle at 50% 0%, rgba(14, 165, 233, 0.07) 0%, transparent 65%),
-        linear-gradient(rgba(15, 23, 42, 0.4) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(15, 23, 42, 0.4) 1px, transparent 1px);
-      background-size: 100% 100%, 35px 35px, 35px 35px;
-      color: var(--text);
-      padding: 30px clamp(15px, 4vw, 50px);
-      min-height: 100vh;
+        radial-gradient(circle at 50% 0%, rgba(0, 246, 255, 0.12) 0%, transparent 65%),
+        linear-gradient(rgba(0, 246, 255, 0.07) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 246, 255, 0.07) 1px, transparent 1px);
+      background-size: 100% 100%, 28px 28px, 28px 28px;
+      color: var(--text); padding: 30px clamp(15px, 4vw, 50px); min-height: 100vh;
     }
-    .header-area {
-      display: flex; justify-content: space-between; align-items: center;
-      margin-bottom: 25px; border-bottom: 1px solid var(--border); padding-bottom: 20px;
-      flex-wrap: wrap; gap: 12px;
-    }
+    body::after { content: " "; position: fixed; inset: 0;
+      background: linear-gradient(rgba(0,0,0,0) 50%, rgba(0, 246, 255, 0.035) 50%);
+      background-size: 100% 4px; z-index: 99; pointer-events: none; }
+
+    .header-area { display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 25px; border-bottom: 1px solid var(--border); padding-bottom: 20px; flex-wrap: wrap; gap: 12px; }
     h1 { font-size: 22px; font-weight: 800; color: var(--neon); text-transform: uppercase;
-      letter-spacing: 2px; text-shadow: 0 0 12px var(--neon-glow); }
-    a.back-link {
-      color: var(--muted); text-decoration: none; font-size: 12px; background: var(--card-bg);
-      padding: 8px 14px; border-radius: 6px; border: 1px solid var(--border); transition: all 0.2s;
-    }
-    a.back-link:hover { color: var(--neon); border-color: var(--neon); }
+      letter-spacing: 2px; text-shadow: 0 0 8px var(--neon), 0 0 26px var(--neon-glow); }
+    a.back-link { color: var(--muted); text-decoration: none; font-size: 12px; background: var(--card-bg);
+      padding: 8px 14px; border-radius: 6px; border: 1px solid var(--border); transition: all 0.2s; }
+    a.back-link:hover { color: var(--neon); border-color: var(--neon); box-shadow: 0 0 12px var(--neon-glow); }
 
     .alert { padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; font-size: 13px; }
-    .alert-success { background: rgba(52,211,153,0.1); color: var(--success); border: 1px solid #059669; }
-    .alert-error { background: rgba(248,113,113,0.1); color: var(--danger); border: 1px solid #dc2626; }
+    .alert-success { background: rgba(0,255,157,0.08); color: var(--success); border: 1px solid #00b374; text-shadow: 0 0 8px rgba(0,255,157,0.4); }
+    .alert-error { background: rgba(255,45,85,0.08); color: var(--danger); border: 1px solid #cc1440; text-shadow: 0 0 8px rgba(255,45,85,0.4); }
 
-    .form-container {
-      background: var(--card-bg); padding: 22px; border-radius: 12px;
-      border: 1px solid var(--border); margin-bottom: 35px;
-      box-shadow: 0 0 25px rgba(14, 165, 233, 0.08);
-    }
-    .form-container h3 { font-size: 13px; color: var(--muted); text-transform: uppercase;
-      letter-spacing: 1.5px; margin-bottom: 14px; border-left: 3px solid var(--neon); padding-left: 8px; }
+    .form-container { background: var(--card-bg); padding: 22px; border-radius: 12px; border: 1px solid var(--border);
+      margin-bottom: 35px; box-shadow: 0 0 35px rgba(0, 246, 255, 0.12); position: relative; overflow: hidden; }
+    .form-container::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, transparent, var(--neon), transparent); box-shadow: 0 0 12px var(--neon); opacity: 0.7; }
+    .form-container h3 { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 1.5px;
+      margin-bottom: 14px; border-left: 3px solid var(--neon); padding-left: 8px; box-shadow: -3px 0 8px var(--neon-glow); }
     form.inline { display: flex; gap: 10px; flex-wrap: wrap; }
-    input, select {
-      flex: 1; min-width: 160px; padding: 11px 13px; background: #0f172a;
-      border: 1px solid var(--border); border-radius: 6px; color: #f1f5f9;
-      font-family: inherit; font-size: 13px; outline: none; transition: all 0.2s;
-    }
-    input:focus, select:focus { border-color: var(--neon); box-shadow: 0 0 10px var(--neon-glow); }
-    button {
-      padding: 11px 20px; background: linear-gradient(135deg, #0ea5e9, #2563eb);
-      color: white; border: none; border-radius: 6px; font-family: inherit;
-      font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: 1px;
-      cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 15px rgba(14,165,233,0.3);
-    }
-    button:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(14,165,233,0.5); }
-    .btn-delete {
-      background: rgba(248,113,113,0.12); color: var(--danger); border: 1px solid #dc2626;
-      padding: 6px 12px; font-size: 11px; box-shadow: none;
-    }
-    .btn-delete:hover { background: #ef4444; color: white; transform: none; box-shadow: 0 0 10px rgba(239,68,68,0.4); }
+    input, select { flex: 1; min-width: 160px; padding: 11px 13px; background: #030a14; border: 1px solid var(--border);
+      border-radius: 6px; color: var(--neon); font-family: inherit; font-size: 13px; outline: none; transition: all 0.2s; }
+    input:focus, select:focus { border-color: var(--neon); box-shadow: 0 0 4px var(--neon), 0 0 18px var(--neon-glow); }
+    button { padding: 11px 20px; background: transparent; border: 1px solid var(--neon); color: var(--neon);
+      border-radius: 6px; font-family: inherit; font-weight: 800; font-size: 12px; text-transform: uppercase;
+      letter-spacing: 1px; cursor: pointer; transition: all 0.2s; }
+    button:hover { background: var(--neon); color: #01040a; box-shadow: 0 0 10px var(--neon), 0 0 30px var(--neon-glow); }
+    .btn-delete { background: rgba(255,45,85,0.12); color: var(--danger); border: 1px solid #cc1440;
+      padding: 6px 12px; font-size: 11px; }
+    .btn-delete:hover { background: var(--danger); color: white; box-shadow: 0 0 15px rgba(255,45,85,0.5); }
 
-    h3.category-title { font-size: 13px; color: var(--muted); margin: 25px 0 10px;
-      text-transform: uppercase; letter-spacing: 1.5px; }
+    h3.category-title { font-size: 13px; color: var(--muted); margin: 25px 0 10px; text-transform: uppercase; letter-spacing: 1.5px; }
     h3.category-title b { color: var(--neon); text-shadow: 0 0 8px var(--neon-glow); }
 
-    .table-wrap { background: var(--card-bg); border: 1px solid var(--border);
-      border-radius: 12px; overflow-x: auto; margin-bottom: 10px; }
+    .table-wrap { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px;
+      overflow-x: auto; margin-bottom: 10px; box-shadow: 0 0 25px rgba(0, 246, 255, 0.1); }
     table { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 500px; }
-    th { background: #0f172a; color: var(--neon); text-transform: uppercase; letter-spacing: 1px;
-      font-size: 10.5px; padding: 11px 14px; text-align: left; border-bottom: 1px solid var(--border); }
-    td { padding: 11px 14px; border-bottom: 1px solid #0f172a; color: #cbd5e1; }
+    th { background: #06121f; color: var(--neon); text-transform: uppercase; letter-spacing: 1px;
+      font-size: 10.5px; padding: 11px 14px; text-align: left; border-bottom: 1px solid var(--border);
+      text-shadow: 0 0 8px rgba(0,246,255,0.4); }
+    td { padding: 11px 14px; border-bottom: 1px solid #0a1a2a; color: #cbd5e1; }
     tr:last-child td { border-bottom: none; }
-    tr:hover td { background: rgba(56, 189, 248, 0.04); }
-    code { background: #0f172a; padding: 3px 7px; border-radius: 4px; color: #38bdf8; }
+    tr:hover td { background: rgba(0, 246, 255, 0.06); }
+    code { background: #06121f; padding: 3px 7px; border-radius: 4px; color: var(--neon); }
     .empty-row { text-align: center; color: var(--muted); }
   </style>
 </head>
 <body>
-
   <div class="header-area">
     <h1>💎 Custom Emoji Manager</h1>
     <a href="/admin/dashboard" class="back-link">← Back to Dashboard</a>
   </div>
 
-  <% if (typeof error !== 'undefined' && error) { %>
-    <div class="alert alert-error"><%= error %></div>
-  <% } %>
-  <% if (typeof success !== 'undefined' && success) { %>
-    <div class="alert alert-success"><%= success %></div>
-  <% } %>
+  <% if (typeof error !== 'undefined' && error) { %><div class="alert alert-error">⚠ <%= error %></div><% } %>
+  <% if (typeof success !== 'undefined' && success) { %><div class="alert alert-success">✔ <%= success %></div><% } %>
 
   <div class="form-container">
     <h3>➕ Add New Emoji</h3>
@@ -141,6 +121,5 @@
       </table>
     </div>
   <% }) %>
-
 </body>
 </html>
