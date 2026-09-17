@@ -23,7 +23,11 @@ router.get('/emojis', requireAdmin, async (req, res) => {
       orderBy: { key: 'asc' },
     });
 
-    res.render('emojis', { categories, error: null, success: null });
+    res.render('emojis', {
+      categories,
+      error: req.query.error || null,
+      success: req.query.success || null,
+    });
   } catch (error) {
     console.error('Error fetching emojis:', error);
     res.status(500).send('Internal Server Error');
