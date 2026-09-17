@@ -13,26 +13,28 @@ router.get('/products', requireAdmin, async (req, res) => {
 });
 
 router.post('/products', requireAdmin, async (req, res) => {
-  const { name, description, panelProductId } = req.body;
+  const { name, description, panelProductId, requiresAndroidId } = req.body;
   await prisma.product.create({
     data: {
       name,
       description,
       panelProductId: panelProductId && panelProductId.trim() !== '' ? panelProductId.trim() : null,
+      requiresAndroidId: requiresAndroidId === 'on' || requiresAndroidId === 'true',
     },
   });
   res.redirect('/admin/products');
 });
 
-// ✅ Update product name + Panel PID (form already exists in products.ejs)
+// ✅ Update product name + Panel PID + Android ID requirement (form already exists in products.ejs)
 router.post('/products/:id/update', requireAdmin, async (req, res) => {
-  const { name, panelProductId } = req.body;
+  const { name, panelProductId, requiresAndroidId } = req.body;
   try {
     await prisma.product.update({
       where: { id: parseInt(req.params.id) },
       data: {
         name,
         panelProductId: panelProductId && panelProductId.trim() !== '' ? panelProductId.trim() : null,
+        requiresAndroidId: requiresAndroidId === 'on' || requiresAndroidId === 'true',
       },
     });
   } catch (err) {
