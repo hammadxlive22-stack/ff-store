@@ -10,6 +10,7 @@ const bot = require('./bot');
 const prisma = require('./services/db');
 const logger = require('./utils/logger');
 const { formatText } = require('./utils/emojis'); // ✅ Emojis helper imported
+const { generateKeyFromPanel } = require('./services/panelApi');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -135,52 +136,87 @@ app.post('/payment/webhook', async (req, res) => {
           include: { user: true, product: true, plan: true },
         });
 
-        if (order && order.status === 'PAYMENT_VERIFIED') {
+        if (order && order.status === 'PAYMENT_VERIFIED' && order.deliveryStatus !== 'DELIVERED') {
+          // 🚀 Fully automatic: generate + deliver the key right away, no admin approval wait
+          let panelResult;
+          try {
+            panelResult = await generateKeyFromPanel(order);
+          } catch (apiErr) {
+            logger.error('Webhook auto-delivery panel error:', apiErr);
+            panelResult = { success: false, text: '⚠️ Panel API request failed (timeout/network error).' };
+          }
+
           const admins = await prisma.admin.findMany({
             where: { isSuperadmin: true, isActive: true, telegramId: { not: null } },
           });
 
-          for (const admin of admins) {
+          if (panelResult.success) {
+            const keyContent = panelResult.text;
+
+            await prisma.$transaction(async (tx) => {
+              await tx.delivery.create({
+                data: { orderId: order.id, keyContent },
+              });
+              await tx.order.update({
+                where: { id: order.id },
+                data: { approvalStatus: 'APPROVED', deliveryStatus: 'DELIVERED', status: 'DELIVERED' },
+              });
+            });
+
+            const supportChannelSetting = await prisma.systemSetting.findUnique({ where: { key: 'SUPPORT_CHANNEL_LINK' } });
+            const channelPrompt = supportChannelSetting?.value ? `\n📢 Join our update channel: ${supportChannelSetting.value}\n` : '';
+
+            await bot.telegram.sendMessage(
+              order.user.telegramId.toString(),
+              `🎉 <b>PAYMENT CONFIRMED — KEY DELIVERED</b>\n\n📦 Product: ${order.product.name}\n⏱️ Plan: ${order.plan.durationLabel}\n\n🔐 <b>Your Key:</b>\n<code>${keyContent}</code>${channelPrompt}\n⚠️ Keep your key private.\n\n🧾 Order ID: <code>${order.id.slice(0,8)}</code>`,
+              { parse_mode: 'HTML' }
+            ).catch((err) => logger.error('Webhook user key delivery error:', err));
+
             const adminMsg = formatText(
-              `🔔 <b>NEW PAID ORDER</b> (Webhook) 'verified'\n\n` +
+              `✅ <b>AUTO-DELIVERED ORDER</b> (Webhook)\n\n` +
               `👤 User: ${order.user.firstName}\n` +
               `📦 Product: ${order.product.name}\n` +
               `⏱️ Plan: ${order.plan.durationLabel}\n` +
               `💰 Amount: ₹${order.amount}\n` +
-              `🧾 Order ID: <code>${order.id.slice(0,8)}</code>\n\n` +
-              `'sigma' Approve or reject:`
+              `🧾 Order ID: <code>${order.id.slice(0,8)}</code>\n` +
+              `🔑 Key: <code>${keyContent}</code>`
             );
-
-            const adminButtons = {
-              reply_markup: {
-                inline_keyboard: [
-                  [
-                    { text: '✅ Approve', callback_data: `approve_${order.id}` },
-                    { text: '❌ Reject', callback_data: `reject_${order.id}` },
+            for (const admin of admins) {
+              await bot.telegram.sendMessage(admin.telegramId.toString(), adminMsg, { parse_mode: 'HTML' })
+                .catch((err) => logger.error('Webhook admin notify error:', err));
+            }
+          } else {
+            // ⚠️ Panel failed — fall back to manual approval so nobody gets left without a key
+            for (const admin of admins) {
+              const adminMsg = formatText(
+                `⚠️ <b>AUTO-DELIVERY FAILED</b> (Webhook)\n\n${panelResult.text}\n\n` +
+                `👤 User: ${order.user.firstName}\n` +
+                `📦 Product: ${order.product.name}\n` +
+                `⏱️ Plan: ${order.plan.durationLabel}\n` +
+                `💰 Amount: ₹${order.amount}\n` +
+                `🧾 Order ID: <code>${order.id.slice(0,8)}</code>\n\n` +
+                `Approve to try again / enter key manually:`
+              );
+              const adminButtons = {
+                reply_markup: {
+                  inline_keyboard: [
+                    [
+                      { text: '🔁 Retry / Enter Key', callback_data: `approve_${order.id}` },
+                      { text: '❌ Reject', callback_data: `reject_${order.id}` },
+                    ],
                   ],
-                ],
-              },
-            };
-            await bot.telegram.sendMessage(admin.telegramId.toString(), adminMsg, {
-              parse_mode: 'HTML',
-              ...adminButtons,
-            }).catch((err) => logger.error('Webhook admin notify error:', err));
+                },
+              };
+              await bot.telegram.sendMessage(admin.telegramId.toString(), adminMsg, { parse_mode: 'HTML', ...adminButtons })
+                .catch((err) => logger.error('Webhook admin notify error:', err));
+            }
+
+            const userMsg = formatText(
+              `✅ <b>Payment Confirmed!</b>\n\n📦 Product: ${order.product.name}\n⏱️ Plan: ${order.plan.durationLabel}\n💰 Amount: ₹${order.amount}\n🧾 Order ID: <code>${order.id.slice(0,8)}</code>\n\n⏳ Key generation had an issue, our team will deliver it shortly.`
+            );
+            await bot.telegram.sendMessage(order.user.telegramId.toString(), userMsg, { parse_mode: 'HTML' })
+              .catch((err) => logger.error('Webhook user notify error:', err));
           }
-
-          const userMsg = formatText(
-            `✅ <b>Payment Confirmed!</b> 'verified'\n\n` +
-            `📦 Product: ${order.product.name}\n` +
-            `⏱️ Plan: ${order.plan.durationLabel}\n` +
-            `💰 Amount: ₹${order.amount}\n` +
-            `🧾 Order ID: <code>${order.id.slice(0,8)}</code>\n\n` +
-            `'top' Sent to admin for approval 'stars'`
-          );
-
-          await bot.telegram.sendMessage(
-            order.user.telegramId.toString(),
-            userMsg,
-            { parse_mode: 'HTML' }
-          ).catch((err) => logger.error('Webhook user notify error:', err));
         }
       }
     }
