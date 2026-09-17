@@ -462,7 +462,7 @@ module.exports = (bot) => {
 
         await prisma.admin.update({
           where: { id: admin.id },
-          data: { password: hashedPassword }
+          data: { passwordHash: hashedPassword }
         });
 
         await prisma.auditLog.create({

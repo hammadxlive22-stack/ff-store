@@ -4,6 +4,95 @@ const prisma = require('../../services/db');
 const famgateway = require('../../services/famgateway');
 const logger = require('../../utils/logger');
 
+// 🔑 Calls the real reseller panel to generate/buy a key for a paid order.
+// Matches the exact contract of https://bantibhaiya.to/api/reseller_v1.php
+async function generateKeyFromPanel(order) {
+  const params = new URLSearchParams({
+    api_key: process.env.PANEL_API_KEY,
+    action: 'buy',
+    product_id: order.product.panelProductId || String(order.product.id),
+    duration: order.plan.durationLabel, // e.g. "1 Day", "3 Hours"
+  });
+
+  // android_id is required ONLY for device-bound / V1 products
+  if (order.product.requiresAndroidId && order.androidId) {
+    params.append('android_id', order.androidId);
+  }
+
+  const panelResponse = await axios.post(
+    'https://bantibhaiya.to/api/reseller_v1.php',
+    params.toString(),
+    {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'x-master-key': process.env.PANEL_MASTER_KEY,
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      },
+      timeout: 20000,
+      maxRedirects: 5,
+    }
+  );
+
+  const panelData = panelResponse.data;
+
+  if (panelData && typeof panelData === 'object') {
+    if (panelData.status === false || panelData.error || panelData.msg) {
+      return { success: false, text: `⚠️ Panel Error: ${panelData.error || panelData.msg || JSON.stringify(panelData)}` };
+    }
+    return { success: true, text: panelData.key || panelData.license || JSON.stringify(panelData) };
+  }
+
+  // Some panels return the key as raw text instead of JSON
+  return { success: true, text: String(panelData) };
+}
+
+// 💳 Creates the FamGateway payment + shows the QR to the customer.
+// Shared by the direct-pay path and the "collected android id first" path.
+async function createPaymentAndShowQr(ctx, order, plan) {
+  const famResponse = await famgateway.createPayment({
+    amount: Number(plan.price),
+    orderId: order.id,
+    customerName: ctx.from.first_name || 'Customer',
+  });
+
+  if (!famResponse.success) {
+    await prisma.order.update({
+      where: { id: order.id },
+      data: { status: 'FAILED', paymentStatus: 'FAILED' },
+    });
+    return ctx.reply('❌ Payment creation failed.');
+  }
+
+  await prisma.payment.create({
+    data: {
+      orderId: order.id,
+      famgatewayOrderId: famResponse.fam_order_id,
+      amount: Number(plan.price),
+      status: 'PENDING',
+      paymentData: {
+        qr_text: famResponse.qr_text,
+        qr_url: famResponse.qr_image,
+      },
+    },
+  });
+
+  const textMsg = `💳 <b>PAYMENT CREATED</b>\n✦━━━━━━━━━━━━━━━━✦\n\n📦 Product: ${plan.product.name}\n⏱️ Plan: ${plan.durationLabel}\n💰 Amount: ₹${plan.price}\n🧾 Order ID: <code>${order.id.slice(0, 8)}</code>\n\n🔗 <b>UPI Link:</b>\n<code>${famResponse.qr_text}</code>\n\n👇 Scan this QR or use buttons below to pay:`;
+
+  const buttons = {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: 'Pay via Link', url: famResponse.payment_url || famResponse.qr_text, icon_custom_emoji_id: '5895735846698487922' }],
+        [{ text: 'I Have Paid', callback_data: `paid_${order.id}`, icon_custom_emoji_id: '6147565374289220368' }],
+        [{ text: 'Cancel Order', callback_data: `cancel_${order.id}`, icon_custom_emoji_id: '6273840152980755328' }],
+      ],
+    },
+  };
+
+  const qrImageUrl = famResponse.qr_image || `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(famResponse.qr_text)}`;
+
+  await ctx.replyWithPhoto(qrImageUrl, { caption: textMsg, parse_mode: 'HTML', ...buttons });
+}
+
 module.exports = (bot) => {
   bot.action(/^pay_(\d+)$/, async (ctx) => {
     ctx.answerCbQuery().catch(() => {});
@@ -21,6 +110,18 @@ module.exports = (bot) => {
         return ctx.reply(`⚠️ Sorry! Product "<b>${plan.product.name}</b>" is currently under maintenance. Please check back later.`, { parse_mode: 'HTML' });
       }
 
+      // 📱 V1 / device-bound products need the customer's Android (device) ID
+      // BEFORE we create the order & QR — ask for it first via a text reply.
+      if (plan.product.requiresAndroidId) {
+        ctx.session = ctx.session || {};
+        ctx.session.awaitingAndroidIdForPlan = planId;
+        ctx.session.sessionTime = Date.now();
+        return ctx.reply(
+          `📱 This product needs your <b>Device/Android ID</b> to bind the key.\n\nPlease send it now as a text message.\n(Or type /cancel to abort)`,
+          { parse_mode: 'HTML' }
+        );
+      }
+
       const order = await prisma.order.create({
         data: {
           userId: BigInt(ctx.from.id),
@@ -30,74 +131,57 @@ module.exports = (bot) => {
         },
       });
 
-      const famResponse = await famgateway.createPayment({
-        amount: Number(plan.price),
-        orderId: order.id,
-        customerName: ctx.from.first_name || 'Customer',
-      });
+      await createPaymentAndShowQr(ctx, order, plan);
+    } catch (error) {
+      logger.error('Payment creation error:', error);
+      ctx.reply('❌ An error occurred. Please try again.').catch(() => {});
+    }
+  });
 
-      if (!famResponse.success) {
-        await prisma.order.update({
-          where: { id: order.id },
-          data: { status: 'FAILED', paymentStatus: 'FAILED' },
-        });
-        return ctx.reply('❌ Payment creation failed.');
-      }
+  // 📱 Catches the customer's Android ID reply for V1/device-bound products.
+  // Registered here (before admin.js's text handler) so it only intercepts
+  // when this exact session flag is set; otherwise it passes through via next().
+  bot.on('text', async (ctx, next) => {
+    ctx.session = ctx.session || {};
 
-      await prisma.payment.create({
+    if (!ctx.session.awaitingAndroidIdForPlan) return next();
+
+    if (ctx.session.sessionTime && (Date.now() - ctx.session.sessionTime > 15 * 60 * 1000)) {
+      delete ctx.session.awaitingAndroidIdForPlan;
+      return next();
+    }
+
+    if (ctx.message.text.trim() === '/cancel') {
+      delete ctx.session.awaitingAndroidIdForPlan;
+      return ctx.reply('❌ Cancelled.');
+    }
+
+    const androidId = ctx.message.text.trim();
+    const planId = ctx.session.awaitingAndroidIdForPlan;
+    delete ctx.session.awaitingAndroidIdForPlan;
+
+    if (!androidId || androidId.length < 4) {
+      return ctx.reply('❌ That doesn\'t look like a valid Android ID. Please try buying again.');
+    }
+
+    try {
+      const plan = await prisma.plan.findUnique({ where: { id: planId }, include: { product: true } });
+      if (!plan) return ctx.reply('❌ Invalid plan. Please try again.');
+
+      const order = await prisma.order.create({
         data: {
-          orderId: order.id,
-          famgatewayOrderId: famResponse.fam_order_id,
-          amount: Number(plan.price),
-          status: 'PENDING',
-          paymentData: {
-            qr_text: famResponse.qr_text,
-            qr_url: famResponse.qr_image,
-          },
+          userId: BigInt(ctx.from.id),
+          productId: plan.productId,
+          planId: plan.id,
+          amount: plan.price,
+          androidId,
         },
       });
 
-      const textMsg = `💳 <b>PAYMENT CREATED</b>\n✦━━━━━━━━━━━━━━━━✦\n\n📦 Product: ${plan.product.name}\n⏱️ Plan: ${plan.durationLabel}\n💰 Amount: ₹${plan.price}\n🧾 Order ID: <code>${order.id.slice(0, 8)}</code>\n\n🔗 <b>UPI Link:</b>\n<code>${famResponse.qr_text}</code>\n\n👇 Scan this QR or use buttons below to pay:`;
-
-      // 🔘 Inline Buttons configured with Custom Emoji IDs for Telegram Premium Owners
-      const buttons = {
-        reply_markup: {
-          inline_keyboard: [
-            [
-              {
-                text: 'Pay via Link',
-                url: famResponse.payment_url || famResponse.qr_text,
-                icon_custom_emoji_id: '5895735846698487922' // telegram/link icon
-              }
-            ],
-            [
-              {
-                text: 'I Have Paid',
-                callback_data: `paid_${order.id}`,
-                icon_custom_emoji_id: '6147565374289220368' // verified / check icon
-              }
-            ],
-            [
-              {
-                text: 'Cancel Order',
-                callback_data: `cancel_${order.id}`,
-                icon_custom_emoji_id: '6273840152980755328' // crying / cross icon
-              }
-            ]
-          ]
-        }
-      };
-
-      const qrImageUrl = famResponse.qr_image || `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(famResponse.qr_text)}`;
-
-      await ctx.replyWithPhoto(qrImageUrl, {
-        caption: textMsg,
-        parse_mode: 'HTML',
-        ...buttons,
-      });
-
+      await ctx.reply('✅ Android ID saved. Generating your payment QR...');
+      await createPaymentAndShowQr(ctx, order, plan);
     } catch (error) {
-      logger.error('Payment creation error:', error);
+      logger.error('Android ID order creation error:', error);
       ctx.reply('❌ An error occurred. Please try again.').catch(() => {});
     }
   });
@@ -133,7 +217,7 @@ module.exports = (bot) => {
       const verification = await famgateway.verifyPayment(order.payment.famgatewayOrderId);
 
       if (verification.status === 'SUCCESS') {
-        
+
         // 🔒 Atomic Database Lock using Prisma Transaction & status check
         const updatedOrderCount = await prisma.order.updateMany({
           where: { id: orderId, paymentStatus: { not: 'SUCCESS' } },
@@ -151,34 +235,8 @@ module.exports = (bot) => {
 
         let licenseKeyText = '';
         try {
-          const apiParams = new URLSearchParams({
-            api_key: process.env.PANEL_API_KEY,
-            action: 'buy',
-            product_id: order.product.panelProductId || order.product.id,
-            duration: order.plan.durationLabel,
-          });
-
-          const panelResponse = await axios.post('https://adminpanels.shop/api/reseller_v1.php', apiParams.toString(), {
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
-              'x-master-key': process.env.PANEL_MASTER_KEY
-            },
-            timeout: 20000
-          });
-
-          const panelData = panelResponse.data;
-          
-          if (panelData) {
-            if (typeof panelData === 'object') {
-              if (panelData.status === false || panelData.error || panelData.msg) {
-                licenseKeyText = `⚠️ Panel Error: ${panelData.error || panelData.msg || JSON.stringify(panelData)}`;
-              } else {
-                licenseKeyText = panelData.key || panelData.license || JSON.stringify(panelData);
-              }
-            } else {
-              licenseKeyText = panelData;
-            }
-          }
+          const result = await generateKeyFromPanel(order);
+          licenseKeyText = result.text;
         } catch (apiErr) {
           logger.error('Panel API automatic key generation error:', apiErr);
           licenseKeyText = '⚠️ Key generation error. Contact admin with your Order ID.';
